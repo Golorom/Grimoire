@@ -105,7 +105,7 @@ function WTF.CheckShardCapabilities()
     end
     if #missing > 0 then
         return false, "This client lacks " .. table.concat(missing, ", ")
-            .. ", so Warlock Tools Forever stays off."
+            .. ", so Grimoire stays off."
     end
     return true
 end
@@ -396,7 +396,7 @@ local function ShowCounterTooltip(frame)
     GameTooltip:SetText("Soul Shards")
     GameTooltip:AddLine(string.format("%d of %d (%s limit)", WTF.CountShards(), limit, source), 1, 1, 1)
     if not WTF.db.shards.counterLocked then
-        GameTooltip:AddLine("Drag to move. /wtf reset moves it back.", 0.7, 0.7, 0.7, true)
+        GameTooltip:AddLine("Drag to move. /grim reset moves it back.", 0.7, 0.7, 0.7, true)
     end
     GameTooltip:Show()
 end
@@ -520,7 +520,7 @@ function WTF.InitializeShards()
         end
     end
     if next(state.sourceWindows) == nil then
-        WTF.Report("Drain Soul was not found, so Soul Shard deletion stays off. Run /wtf debug_shards.")
+        WTF.Report("Drain Soul was not found, so Soul Shard deletion stays off. Run /grim debug_shards.")
     end
     state.count = WTF.CountShards()
     state.keep = state.count
@@ -672,7 +672,7 @@ function WTF.ReportShardDebug()
             tostring(Round(bottom)), tostring(scale), tostring(alpha), tostring(text), tostring(icon),
             tostring(strata), tostring(level), tostring(iconShown), tostring(regions)))
     else
-        WTF.Report("debug_shards counter not created: startup did not reach the shard counter (WTF available="
+        WTF.Report("debug_shards counter not created: startup did not reach the shard counter (Grimoire available="
             .. tostring(WTF.available) .. ")")
     end
     local now = GetTime()

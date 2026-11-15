@@ -1,4 +1,5 @@
 local _, ns = ...
+ns = ns.engine -- Grimoire: the engines run in their own namespace (Engine\Shim.lua)
 local DyresToolkit = ns.toolkit
 
 -- Which mob a unit token shows, for every Dyre's AddOn (Toolkit 2.4.0; Dyre's

@@ -48,12 +48,11 @@ end
 -- Before the DoT tracker (Core), whose rows draw the predictor's damage.
 function WTF.InitializePredict()
     local predictor = WTF.shared.CreateDotPredictor({
-        addon = "WarlockToolsForever",
+        addon = "Grimoire",
         priority = PREDICT_PRIORITY,
         class = "WARLOCK",
         store = WTF.db.predict,
         color = Color,
-        legacyTicks = WTF.accountDB.ticks,
     })
     if not predictor then
         return
@@ -62,11 +61,11 @@ function WTF.InitializePredict()
     predict.available = true
 end
 
--- /wtf debug_predict: each mob's DoTs, ticks, the average tick and where it
+-- /grim debug_predict: each mob's DoTs, ticks, the average tick and where it
 -- came from (learned, saved, or guessed), and the damage to come.
 function WTF.ReportPredictDebug()
     if not predict.available then
-        WTF.Report("DoT prediction: off on this client (on WoW: Forever it needs Dyre's Toolkit 2.6 or later).")
+        WTF.Report("DoT prediction: off on this client (the combat log and the hidden-ticks path are both closed).")
         return
     end
     for index, line in ipairs(WTF.predictor:DebugLines()) do

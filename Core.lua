@@ -1,15 +1,20 @@
 local addonName, WTF = ...
 
-local DEFAULT_TITLE = "Warlock Tools Forever"
-local READY_MESSAGE = "  Ready. Type /wtf to open the settings."
-local SLASH_KEY = "WARLOCKTOOLSFOREVER"
-local PRIMARY_SLASH = "/wtf"
-local BACKUP_SLASH = "/warlocktools"
+-- Grimoire: a personal fork of Warlock Tools Forever 1.8.0 by Dyre (John
+-- Bedworth, MIT), with Dyre's Toolkit 2.9.2's engines in Engine\ and without
+-- the announcements, the Toolkit's layout and settings home, and the notes
+-- about Dyre's other AddOns. Internal names stay WTF's, so upstream changes
+-- still compare line by line.
+local DEFAULT_TITLE = "Grimoire"
+local READY_MESSAGE = "  Ready. Type /grim to open the settings."
+local SLASH_KEY = "GRIMOIRE"
+local PRIMARY_SLASH = "/grim"
+local BACKUP_SLASH = "/grimoire"
 local MAX_SLASH_ALIASES = 10
 WTF.available = false
 
 function WTF.Report(message)
-    DEFAULT_CHAT_FRAME:AddMessage("WTF: " .. tostring(message))
+    DEFAULT_CHAT_FRAME:AddMessage("Grimoire: " .. tostring(message))
 end
 
 -- An action that failed: said in chat and in red at the top of the screen,
@@ -19,7 +24,7 @@ local WARNING_COLOR = {1, 0.1, 0.1}
 function WTF.Warn(message)
     WTF.Report(message)
     if type(UIErrorsFrame) == "table" and type(UIErrorsFrame.AddMessage) == "function" then
-        UIErrorsFrame:AddMessage("WTF: " .. tostring(message), WARNING_COLOR[1], WARNING_COLOR[2], WARNING_COLOR[3])
+        UIErrorsFrame:AddMessage("Grimoire: " .. tostring(message), WARNING_COLOR[1], WARNING_COLOR[2], WARNING_COLOR[3])
     end
 end
 
@@ -68,78 +73,6 @@ function WTF.MoveRestricted()
     return false
 end
 
--- Dyre's Toolkit (author-approved, 2026-10-19): one layout mode, grid, and
--- settings home for every Dyre's AddOn, and frames that snap across AddOns.
--- The TOC lists it as OptionalDeps, so it loads first when installed; without
--- it WTF keeps its own Layout.lua, grid, and top-level settings page.
-local TOOLKIT_CONTRACT = 1
-local TOOLKIT_FUNCTIONS = {"RegisterAddOn", "RegisterSettingsCategory", "RegisterMovable", "BeginDrag",
-    "EndDrag", "ScaleKeepingCenter", "IsLocked", "Lock", "Unlock", "OpenSettings"}
-local TOOLKIT_MESSAGES = {
-    missing = "Install Dyre's Toolkit from CurseForge for one layout mode and settings home for all Dyre's AddOns.",
-    old = "Update Dyre's Toolkit from CurseForge: this version is too old for WTF, so WTF uses its own layout.",
-}
-
--- Dyre's Toolkit with the contract and functions WTF uses, else nil and why.
-function WTF.Toolkit()
-    local toolkit = rawget(_G, "DyresToolkit")
-    if type(toolkit) ~= "table" or type(toolkit.RequireContract) ~= "function" then
-        return nil, "missing"
-    end
-    toolkit = toolkit.RequireContract(TOOLKIT_CONTRACT)
-    if type(toolkit) ~= "table" then
-        return nil, "old"
-    end
-    for _, name in ipairs(TOOLKIT_FUNCTIONS) do
-        if type(toolkit[name]) ~= "function" then
-            return nil, "old"
-        end
-    end
-    return toolkit, "ok"
-end
-
--- Features that moved out of WTF in 1.3.0 (author-approved): the shield
--- display to Dyre's Shields Up; the cooldown chimes, the Nightfall sound,
--- and the Demon Armor reminder to Dyre's Buff Reminders. CurseForge lists both
--- as required, so the app installs them; the TOC keeps them optional, so WTF
--- loads without them and says once per session, at login, what to install
--- or enable (CurseForge only).
-WTF.MOVED_TO = {
-    {addon = "DyresShieldsUp", title = "Dyre's Shields Up", what = "the shield display"},
-    {addon = "DyresBuffReminders", title = "Dyre's Buff Reminders",
-        what = "the cooldown chimes, the Nightfall sound, and the Demon Armor reminder"},
-}
-
--- "loaded", "disabled" (installed but not enabled), or "missing".
-local function AddOnState(addon)
-    if type(C_AddOns) ~= "table" then
-        return "missing"
-    end
-    if type(C_AddOns.IsAddOnLoaded) == "function" and C_AddOns.IsAddOnLoaded(addon) == true then
-        return "loaded"
-    end
-    if type(C_AddOns.GetAddOnInfo) == "function" then
-        local name, _, _, _, reason = C_AddOns.GetAddOnInfo(addon)
-        if type(name) == "string" and reason ~= "MISSING" then
-            return "disabled"
-        end
-    end
-    return "missing"
-end
-
-function WTF.ReportMovedFeatures()
-    for _, other in ipairs(WTF.MOVED_TO) do
-        local state = AddOnState(other.addon)
-        if state == "disabled" then
-            WTF.Report("Enable " .. other.title .. " in the AddOn list for " .. other.what
-                .. ": it moved there from WTF.")
-        elseif state == "missing" then
-            WTF.Report("Install " .. other.title .. " from CurseForge for " .. other.what
-                .. ": it moved there from WTF.")
-        end
-    end
-end
-
 -- Reads TOC fields so the banner follows the packaged version; never gates operations.
 local function Metadata(field)
     if type(C_AddOns) ~= "table" or type(C_AddOns.GetAddOnMetadata) ~= "function" then
@@ -177,8 +110,7 @@ local REQUIRED_NAMESPACE = {
     "Warn", "RegisterMovable", "BeginDrag", "EndDrag", "ScaleKeepingCenter",
     "CharacterMacrosAvailable", "WriteCharacterMacro",
     "DeleteCharacterMacro", "ApplyControlMacros",
-    "InitializeControl", "RefreshControl", "ResetControlPosition", "ReportControlDebug", "SanitizeControl", "InitializeAnnounce", "FormatAnnouncement", "ReportAnnounceDebug", "DebugEmote", "FriendlyTargetNames",
-    "WhisperHealthstoneGift",
+    "InitializeControl", "RefreshControl", "ResetControlPosition", "ReportControlDebug", "SanitizeControl",
     "CheckTrackerCapabilities", "InitializeTracker", "ResetTrackerPosition", "RefreshTracker",
     "ReportTrackerDebug", "TrackerCandidateFilters", "TrackerKnowsSlot", "SetTrackerTheme",
     "InitializePlateDots", "RefreshPlateDots", "HasTrackableDots", "ApplyTrackerColors", "ApplyDotColors",
@@ -194,7 +126,7 @@ local function CheckInstalledFiles()
     for _, name in ipairs(REQUIRED_NAMESPACE) do
         if type(WTF[name]) ~= "function" then
             return false, "AddOn files are from different versions (missing " .. name
-                .. "). Reinstall every Warlock Tools Forever file, then restart the client."
+                .. "). Reinstall every Grimoire file, then restart the client."
         end
     end
     return true
@@ -203,12 +135,12 @@ end
 local function CheckClass()
     local _, classFile = UnitClass("player")
     if classFile ~= "WARLOCK" then
-        return false, "Warlock Tools Forever is for Warlocks, so it stays off on this character."
+        return false, "Grimoire is for Warlocks, so it stays off on this character."
     end
     return true
 end
 
--- Per-character settings in WarlockToolsForeverDB, repaired on load so a
+-- Per-character settings in GrimoireDB, repaired on load so a
 -- damaged or older table can never break the AddOn.
 WTF.SHARD_LIMIT_MIN = 1
 WTF.SHARD_LIMIT_MAX = 60
@@ -252,46 +184,6 @@ function WTF.SanitizeFrameScale(value)
     return math.max(WTF.FRAME_SCALE_MIN, math.min(WTF.FRAME_SCALE_MAX, stepped))
 end
 
--- Chat messages longer than this are cut by the client.
-WTF.ANNOUNCE_MAX_LENGTH = 255
-
--- The default texts credit WTF (author-approved), so players you group with
--- can find it; a text you edit says only what you wrote.
-WTF.ANNOUNCE_CREDIT = " - via Warlock Tools Forever (WTF)"
-WTF.ANNOUNCE_DEFAULTS = {
-    summonGroupText = "The ritual hungers! Click the portal to drag >> %T << through the Twisting Nether" .. WTF.ANNOUNCE_CREDIT,
-    soulstoneGroupText = "A piece of >> %T <<'s soul now rests in my keeping. Death is merely an inconvenience" .. WTF.ANNOUNCE_CREDIT,
-    -- The author's texts, with their own credit; %Z leaves room for long zone names.
-    summonWhisperText = "Summoning you to %Z, since your sloth-like pace would get you there sometime next week. Accept the summon when it pops up (and tell me if it doesn't). Courtesy of Warlock Tools Forever (WTF)",
-    soulstoneWhisperText = "I've trapped a sliver of your soul in a stone. If you die, it drags you back to life right where you fell, so if you're going to die, die in a good spot. Courtesy of Warlock Tools Forever (WTF)",
-    -- Emotes start with your name: "Dyre crushes a Soul Shard ...".
-    healthstoneEmoteText = "crushes a Soul Shard and forges a Healthstone from the screaming essence within. - via Warlock Tools Forever (WTF)",
-    soulstoneEmoteText = "binds a captured soul into a Soulstone. Someone's afterlife just got an escape hatch. - via Warlock Tools Forever (WTF)",
-    healthstoneWhisperText = "Here, have a Healthstone. Some poor creature's essence gives you more health! Courtesy of Warlock Tools Forever (WTF)",
-    -- Control (author-approved): %T the mob, %M its raid marker in chat.
-    fearGroupText = "Fearing >> %T <<. Let it run; chase it and you bring friends" .. WTF.ANNOUNCE_CREDIT,
-    banishGroupText = "Banishing >> %T << %M to the Twisting Nether. Hands off until it comes back" .. WTF.ANNOUNCE_CREDIT,
-    enslaveGroupText = "Enslaving >> %T <<. It works for me now; leave my new pet alone" .. WTF.ANNOUNCE_CREDIT,
-    howlGroupText = "Howl of Terror! Everything nearby is about to run screaming" .. WTF.ANNOUNCE_CREDIT,
-}
--- Saved copies of earlier defaults, never edited, become the new ones.
-local OLD_ANNOUNCE_DEFAULTS = {
-    summonGroupText = {"Summoning >> %T << click please", "Summoning >> %T << click please - via Warlock Tools Forever (WTF)"},
-    summonWhisperText = {"Summoning you to %Z now. Watch for the summon prompt and accept it. If it doesn't appear, tell me.", "Summoning you to %Z now. Watch for the summon prompt and accept it. If it doesn't appear, tell me. - via Warlock Tools Forever (WTF)"},
-    soulstoneGroupText = {"Soulstone on >> %T <<", "Soulstone on >> %T << - via Warlock Tools Forever (WTF)"},
-    soulstoneWhisperText = {"I've applied a soulstone to you, this means if you die, you can revive yourself where you fell. So, if you're going to die, die in a good spot.", "I've applied a soulstone to you, this means if you die, you can revive yourself where you fell. So, if you're going to die, die in a good spot. - via Warlock Tools Forever (WTF)"},
-    healthstoneWhisperText = {"Enjoy the Healthstone, %T! Use it when your health runs low. - via Warlock Tools Forever (WTF)"},
-}
-
-local function IsOldDefault(key, text)
-    for _, old in ipairs(OLD_ANNOUNCE_DEFAULTS[key] or {}) do
-        if text == old then
-            return true
-        end
-    end
-    return false
-end
-
 local function SanitizePosition(position)
     if type(position) ~= "table" or type(position.point) ~= "string"
         or type(position.relativePoint) ~= "string"
@@ -300,18 +192,6 @@ local function SanitizePosition(position)
     end
     return {point = position.point, relativePoint = position.relativePoint,
         x = position.x, y = position.y}
-end
-
--- Announcement text: a non-empty line within the chat limit, else the default.
-function WTF.SanitizeAnnouncement(text, default)
-    if type(text) ~= "string" then
-        return default
-    end
-    text = text:match("^%s*(.-)%s*$")
-    if text == "" or #text > WTF.ANNOUNCE_MAX_LENGTH or text:find("[\r\n]") then
-        return default
-    end
-    return text
 end
 
 -- Tracker and nameplate slots, in display order, with default colors as the
@@ -530,10 +410,6 @@ function WTF.SanitizeTrackerSizes(theme, saved)
     return sizes
 end
 
-local ANNOUNCE_SWITCHES = {"summonGroup", "summonWhisper", "soulstoneGroup", "soulstoneWhisper",
-    "healthstoneWhisper", "healthstoneEmote", "soulstoneEmote", "fearGroup", "banishGroup", "enslaveGroup",
-    "howlGroup"}
-
 function WTF.SanitizeDB(db)
     if type(db) ~= "table" then
         db = {}
@@ -543,7 +419,8 @@ function WTF.SanitizeDB(db)
         enabled = shards.enabled ~= false,
         autoLimit = shards.autoLimit ~= false,
         limit = WTF.SanitizeShardLimit(shards.limit),
-        report = shards.report ~= false,
+        -- Grimoire: the chat line for each deleted shard is off by default.
+        report = shards.report == true,
         counter = shards.counter ~= false,
         counterLow = WTF.SanitizeShardLow(shards.counterLow),
         counterPosition = SanitizePosition(shards.counterPosition),
@@ -645,28 +522,9 @@ function WTF.SanitizeDB(db)
         plateDiesX = WTF.SanitizeWhole(predict.plateDiesX, WTF.DIES_OFFSET_MIN, WTF.DIES_OFFSET_MAX, 0),
         plateDiesY = WTF.SanitizeWhole(predict.plateDiesY, WTF.DIES_OFFSET_MIN, WTF.DIES_OFFSET_MAX, 0),
     }
-    local announce = type(db.announce) == "table" and db.announce or {}
-    local cleanAnnounce = {
-        enabled = announce.enabled ~= false,
-        channel = announce.channel == "say" and "say" or "group",
-    }
-    for _, key in ipairs(ANNOUNCE_SWITCHES) do
-        cleanAnnounce[key] = announce[key] ~= false
-    end
-    for key, default in pairs(WTF.ANNOUNCE_DEFAULTS) do
-        local text = announce[key]
-        if IsOldDefault(key, text) then
-            text = default
-        end
-        cleanAnnounce[key] = WTF.SanitizeAnnouncement(text, default)
-    end
-    db.announce = cleanAnnounce
     -- One lock for every frame (author-approved, as MTF), locked by default;
     -- each frame reads its own copy, and the tracker shows its sample rows
     -- while unlocked, since it can only be dragged while it shows.
-    -- db.shield, db.chimes, db.alerts, and db.reminders stay exactly as saved
-    -- for one release (author-approved): Dyre's Shields Up and Dyre's Buff
-    -- Reminders copy them once, and a downgrade still finds them.
     if WTF.SanitizeControl then
         db.control = WTF.SanitizeControl(db.control, SanitizePosition)
     end
@@ -680,7 +538,7 @@ function WTF.SanitizeDB(db)
 end
 
 -- Another AddOn can register the same slash command; the last one loaded wins.
--- Returns the other command key, or nil when /wtf is ours alone.
+-- Returns the other command key, or nil when /grim is ours alone.
 local function FindSlashConflict()
     for key in pairs(SlashCmdList) do
         if key ~= SLASH_KEY then
@@ -731,7 +589,7 @@ local function InstallInputHooks()
         if keys:GetPropagateKeyboardInput() then
             keys:SetScript("OnKeyDown", OnInput)
             keys:EnableKeyboard(true)
-            -- For /wtf debug_stones: whether a key press can run waiting work.
+            -- For /grim debug_stones: whether a key press can run waiting work.
             WTF.keyInputHooked = true
         end
     end
@@ -750,7 +608,7 @@ function WTF.CreateMover(frame)
     mover:SetBackdropBorderColor(1, 0.82, 0)
     mover.hint = mover:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     mover.hint:SetPoint("BOTTOM", mover, "TOP", 0, 2)
-    mover.hint:SetText("Drag to move · /wtf lock when done")
+    mover.hint:SetText("Drag to move. /grim lock when done")
     mover:SetShown(not WTF.db.locked)
     return mover
 end
@@ -799,8 +657,7 @@ local function BuildGrid()
 end
 
 function WTF.RefreshGrid()
-    -- With Dyre's Toolkit, its grid shows for every Dyre's AddOn.
-    local wanted = not WTF.toolkit and not WTF.db.locked and WTF.db.grid
+    local wanted = not WTF.db.locked and WTF.db.grid
     if not grid then
         if not wanted then
             return
@@ -821,8 +678,8 @@ function WTF.RefreshGrid()
     WTF.grid = grid
 end
 
--- /wtf unlock and /wtf lock, and the main page's "Unlock frames to move them":
--- every movable WTF frame together (author-approved, as MTF does).
+-- /grim unlock and /grim lock, and the main page's "Unlock frames to move them":
+-- every movable frame together (author-approved, as MTF does).
 local function SetLockFlags(locked)
     WTF.db.locked = locked
     WTF.db.stones.locked = locked
@@ -831,7 +688,6 @@ local function SetLockFlags(locked)
     WTF.db.shards.counterLocked = locked
 end
 
--- quiet: Dyre's Toolkit locks every Dyre's AddOn and says one line for all.
 function WTF.SetFramesLocked(locked, quiet)
     SetLockFlags(locked)
     WTF.RefreshTracker()
@@ -843,47 +699,26 @@ function WTF.SetFramesLocked(locked, quiet)
         return
     end
     if locked then
-        WTF.Report("All WTF frames locked.")
+        WTF.Report("All Grimoire frames locked.")
     else
-        WTF.Report("All WTF frames unlocked: drag them where you want (Shift-drag moves a snapped group), "
-            .. "then type /wtf lock.")
+        WTF.Report("All Grimoire frames unlocked: drag them where you want (Shift-drag moves a snapped group), "
+            .. "then type /grim lock.")
     end
 end
 
--- With Dyre's Toolkit, one layout mode for every Dyre's AddOn: the toolkit
--- calls WTF.SetFramesLocked back, quietly.
 function WTF.Unlock()
-    if WTF.toolkit then
-        WTF.toolkit.Unlock()
-    else
-        WTF.SetFramesLocked(false)
-    end
+    WTF.SetFramesLocked(false)
 end
 
 function WTF.Lock()
-    if WTF.toolkit then
-        WTF.toolkit.Lock()
-    else
-        WTF.SetFramesLocked(true)
-    end
+    WTF.SetFramesLocked(true)
 end
 
--- Before any module registers a frame: with Dyre's Toolkit, its layout moves
--- WTF's frames (they snap to other Dyre's AddOns' frames and to its grid),
--- and WTF's lock follows the toolkit's (locked at login). Else Layout.lua's.
--- Dyre's Toolkit 2.4.0's shared files (WTF 1.4.1, John: "Just have WTF use
--- the shared Toolkit files and fix the overlap"): the aura slots (Auras.lua,
--- once WTF's AuraEngine.lua), the plate memory and unit helpers (Units.lua,
--- once Core's), and the DoT prediction's frame adapters and drawing
--- (HealthBars.lua, once Predict.lua's). The TOC keeps the Toolkit optional
--- (family rule; CurseForge requires it): without these, the DoT tracker,
--- the nameplate dots, the Control bar, and the prediction stay off, with
--- one line at login. Only true function fields count, as the Toolkit keeps
--- contract 2 and has no version string.
--- Since WTF 1.5.0 (Toolkit 2.5.0, the engine move) the DoT tracker, the
--- nameplate dots, the prediction, and the Control bar with its macros and
--- announcements are the Toolkit's engines; WTF passes its settings, frame
--- names, and hooks (Tracker, Dots, Predict, Control).
+-- The engines (Engine\, Dyre's Toolkit 2.9.2's): the DoT tracker, the
+-- nameplate dots, the prediction, and the Control bar with its macros. WTF's
+-- modules call them as WTF.shared, as they called the Toolkit. Every function
+-- is checked, so a mixed install of old and new files stays off with one
+-- line instead of failing later.
 local SHARED_FUNCTIONS = {
     "AuraEngineKind", "CreateAuraContainer",
     "ReadGUID", "ReadName", "IsDead", "LearnPlate", "LearnPlates", "ForgetPlate", "KnownPlate", "PlateGUID",
@@ -893,14 +728,11 @@ local SHARED_FUNCTIONS = {
     "MarkerCode", "FormatAnnouncement", "CreateAnnouncer", "ClaimOwner", "SetOwnerEnabled", "IsOwner",
     "CreateControlTracker", "CreateDotTracker", "CreatePlateDots", "CreateDotPredictor",
 }
-local SHARED_MISSING = "Install or update Dyre's Toolkit (2.5 or later) from CurseForge for the DoT tracker, "
-    .. "the nameplate DoT dots, the Control bar, and DoT damage prediction: they stay off without it."
+local SHARED_MISSING = "Engine files are missing or from another version, so the DoT tracker, the nameplate "
+    .. "DoT dots, the Control bar, and DoT damage prediction stay off. Reinstall every Grimoire file."
 
 function WTF.SharedToolkit()
-    local toolkit = rawget(_G, "DyresToolkit")
-    if type(toolkit) == "table" and type(toolkit.RequireContract) == "function" then
-        toolkit = toolkit.RequireContract(TOOLKIT_CONTRACT)
-    end
+    local toolkit = type(WTF.engine) == "table" and WTF.engine.toolkit
     if type(toolkit) ~= "table" then
         return nil
     end
@@ -912,11 +744,6 @@ function WTF.SharedToolkit()
     return toolkit
 end
 
--- The shared files stand in for WTF's own copies, under the same names the
--- modules call. focusWorks moves to the Toolkit's one flag for every Dyre's
--- AddOn, once: a true WTF flag (which already holds a 1.3.3 test build's
--- per-character one) is noted there, then dropped. Without the Toolkit WTF's
--- own flag stays for a later login.
 local function UseShared()
     local shared = WTF.SharedToolkit()
     WTF.shared = shared
@@ -926,83 +753,45 @@ local function UseShared()
     end
     WTF.AuraEngineKind = shared.AuraEngineKind
     WTF.AURA_ENGINE_MISSING = shared.AURA_ENGINE_MISSING
-    if WTF.accountDB.focusWorks == true then
-        shared.NoteFocusWorks()
-    end
-    WTF.accountDB.focusWorks = nil
 end
 
-local function UseToolkit()
-    local toolkit, state = WTF.Toolkit()
-    WTF.toolkit = toolkit
-    if not toolkit then
-        WTF.Report(TOOLKIT_MESSAGES[state])
-        return
-    end
-    WTF.RegisterMovable = toolkit.RegisterMovable
-    WTF.BeginDrag = toolkit.BeginDrag
-    WTF.EndDrag = toolkit.EndDrag
-    WTF.ScaleKeepingCenter = toolkit.ScaleKeepingCenter
-    SetLockFlags(toolkit.IsLocked() ~= false)
-end
-
--- After the settings exist, so the toolkit's menu can open them.
-local function JoinToolkit()
-    if not WTF.toolkit then
-        return
-    end
-    WTF.toolkit.RegisterAddOn({addon = addonName, title = DEFAULT_TITLE,
-        setLocked = function(locked) WTF.SetFramesLocked(locked == true, true) end,
-        openSettings = WTF.OpenSettings})
-end
-
--- /wtf reset: the Stones bar, the DoT tracker, and the shard counter back to their default places.
+-- /grim reset: the Stones bar, the DoT tracker, the shard counter, and the Control bar back to their default places.
 function WTF.ResetPositions()
     WTF.ResetShardCounterPosition()
     WTF.ResetStonesPosition()
     WTF.ResetTrackerPosition()
     WTF.ResetControlPosition()
     if InCombatLockdown() then
-        WTF.Report("WTF frames move back to their default places after combat.")
+        WTF.Report("Grimoire frames move back to their default places after combat.")
     end
 end
 
-SLASH_WARLOCKTOOLSFOREVER1 = PRIMARY_SLASH
-SLASH_WARLOCKTOOLSFOREVER2 = BACKUP_SLASH
+SLASH_GRIMOIRE1 = PRIMARY_SLASH
+SLASH_GRIMOIRE2 = BACKUP_SLASH
 SlashCmdList[SLASH_KEY] = WTF.HandleCommand
 
--- Account-wide settings, one set per client install (shared with MTF):
--- focusWorks, which only true survives. A 1.3.3 test build kept it per
--- character in db.control; a true one is carried over once, and SanitizeControl
--- drops the old key.
--- ticks: DoT prediction's learned ticks, {[rank spell ID] = {tick = average,
--- power = spell power it was learned at}}; damaged entries are dropped.
-local function LoadTicks(saved)
-    local ticks = {}
-    if type(saved) ~= "table" then
-        return ticks
-    end
-    for id, entry in pairs(saved) do
-        if type(id) == "number" and type(entry) == "table" and type(entry.tick) == "number" and entry.tick > 0
-                and type(entry.power) == "number" and entry.power >= 0 then
-            ticks[id] = {tick = entry.tick, power = entry.power}
-        end
-    end
-    return ticks
-end
-
-local function LoadAccountDB(saved, character)
+-- Account-wide: GrimoireAccountDB.engine is the engines' one saved table
+-- (Engine\Shim.lua): focusWorks (only true survives), the prediction's learned
+-- ticks (DotPredict.lua repairs them once a session), and ticksImported.
+local function LoadAccountDB(saved)
     saved = type(saved) == "table" and saved or {}
-    local old = type(character) == "table" and type(character.control) == "table"
-        and character.control.focusWorks == true
-    return {focusWorks = (saved.focusWorks == true or old) or nil, ticks = LoadTicks(saved.ticks)}
+    local engine = type(saved.engine) == "table" and saved.engine or {}
+    engine.focusWorks = engine.focusWorks == true or nil
+    if type(engine.ticks) ~= "table" then
+        engine.ticks = {}
+    end
+    if type(engine.ticksImported) ~= "table" then
+        engine.ticksImported = nil
+    end
+    return {engine = engine}
 end
 
 local function LoadDB()
-    WarlockToolsForeverAccountDB = LoadAccountDB(WarlockToolsForeverAccountDB, WarlockToolsForeverDB)
-    WTF.accountDB = WarlockToolsForeverAccountDB
-    WarlockToolsForeverDB = WTF.SanitizeDB(WarlockToolsForeverDB)
-    WTF.db = WarlockToolsForeverDB
+    GrimoireAccountDB = LoadAccountDB(GrimoireAccountDB)
+    WTF.accountDB = GrimoireAccountDB
+    WTF.engine.db = GrimoireAccountDB.engine
+    GrimoireDB = WTF.SanitizeDB(GrimoireDB)
+    WTF.db = GrimoireDB
 end
 
 local events = CreateFrame("Frame")
@@ -1038,15 +827,12 @@ events:SetScript("OnEvent", function(self, event, loadedName)
         WTF.Report(message)
         return
     end
-    WTF.ReportMovedFeatures()
     -- Called directly rather than from each file's own PLAYER_LOGIN handler,
     -- so startup never depends on event handler order.
-    UseToolkit()
     UseShared()
     InstallInputHooks()
     WTF.InitializeShards()
     WTF.InitializeStones()
-    WTF.InitializeAnnounce()
     if WTF.shared then
         -- The predictor first: the DoT tracker's rows draw its damage.
         WTF.InitializePredict()
@@ -1056,6 +842,5 @@ events:SetScript("OnEvent", function(self, event, loadedName)
     end
     WTF.InitializeProbe()
     WTF.InitializeOptions()
-    JoinToolkit()
     WTF.RefreshGrid()
 end)

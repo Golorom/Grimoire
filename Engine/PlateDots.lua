@@ -1,4 +1,5 @@
 local _, ns = ...
+ns = ns.engine -- Grimoire: the engines run in their own namespace (Engine\Shim.lua)
 local DyresToolkit = ns.toolkit
 
 -- Nameplate DoT dots, for every Dyre's AddOn (Toolkit 2.5.0, engine stage C;

@@ -3,7 +3,8 @@ local _, WTF = ...
 -- Control bar (author-approved, after MTF's Polymorph bar): a block per mob you
 -- Fear or Banish, in WTF's Bars format, the Focus box above it for your
 -- focus's Fear, Fear timers under nameplates, the "! Fear", "! Banish", and
--- "! Seduction" macros, and the cast announcements. Since 1.5.0 the engine is
+-- "! Seduction" macros. Grimoire: no cast announcements and no raid marker in
+-- the macros (markerFor is always none). Since 1.5.0 the engine is
 -- Dyre's Toolkit's (Control.lua's CreateControlTracker, 2.5.0, moved from
 -- here; its header holds the rules). WTF keeps its settings (db.control and
 -- the announce texts), its frame names, the bar's place and mover, its
@@ -25,10 +26,9 @@ WTF.CONTROL_SCALE_MAX = 150
 WTF.CONTROL_SCALE_STEP = 5
 WTF.DEFAULT_CONTROL_SCALE = 100
 
--- The settings page and the sanitizer read the spells and markers at load,
--- from the Toolkit's tables (it loads first, OptionalDeps); without Dyre's
--- Toolkit 2.5 the bar is off and there are none to set.
-local toolkit = rawget(_G, "DyresToolkit")
+-- The settings page and the sanitizer read the spells at load, from the
+-- engines' tables (Engine\, loaded first by the TOC).
+local toolkit = WTF.engine and WTF.engine.toolkit
 local classData = type(toolkit) == "table" and type(toolkit.ClassData) == "table" and toolkit.ClassData.WARLOCK
 WTF.CONTROL_SPELLS = classData and classData.control or {}
 WTF.RAID_MARKERS = type(toolkit) == "table" and toolkit.RAID_MARKERS or {{index = 0, label = "None"}}
@@ -85,7 +85,7 @@ function WTF.FocusWorks()
     if WTF.shared then
         return WTF.shared.FocusWorks()
     end
-    return WTF.accountDB.focusWorks == true
+    return false
 end
 
 -- A macro's text for one of ClassData's macro defs (the Toolkit's
@@ -153,13 +153,6 @@ local function ShowTooltip(holder)
     GameTooltip:Show()
 end
 
--- The cast announcements (author-approved): each spell's switch and text
--- from the announce settings, while Announce is on, to the group or Say.
-local function AnnounceText(key)
-    local settings = WTF.db.announce
-    return settings[key .. "Group"] and settings[key .. "GroupText"] or nil
-end
-
 function WTF.RefreshControl()
     if control.available then
         control.tracker:Refresh()
@@ -179,7 +172,7 @@ function WTF.InitializeControl()
         WTF.Report("The control bar stays off: this client lacks " .. WTF.AURA_ENGINE_MISSING .. ".")
         return
     end
-    anchor = CreateFrame("Frame", "WarlockToolsForeverControl", UIParent)
+    anchor = CreateFrame("Frame", "GrimoireControl", UIParent)
     anchor:SetSize(ROW_WIDTH, ROWS * (ROW_HEIGHT + ROW_GAP) - ROW_GAP)
     anchor:SetMovable(true)
     anchor:SetClampedToScreen(true)
@@ -192,19 +185,19 @@ function WTF.InitializeControl()
         color = {WTF.PanelColor("focus")}
     end
     local tracker, missing = WTF.shared.CreateControlTracker({
-        addon = "WarlockToolsForever",
+        addon = "Grimoire",
         priority = CONTROL_PRIORITY,
         class = "WARLOCK",
         store = WTF.db.control,
-        names = {row = "WarlockToolsForeverControlRow", click = "WarlockToolsForeverControlClick",
-            focus = "WarlockToolsForeverControlFocus"},
+        names = {row = "GrimoireControlRow", click = "GrimoireControlClick",
+            focus = "GrimoireControlFocus"},
         parent = anchor,
         rows = ROWS,
         locked = function() return WTF.db.locked ~= false end,
         samples = SAMPLES,
         focusBox = {key = "fear", color = color},
-        announce = {text = AnnounceText, enabled = function() return WTF.db.announce.enabled == true end,
-            say = function() return WTF.db.announce.channel == "say" end},
+        -- No raid marker in "! Banish" and the others (no /tm line).
+        markerFor = function() return 0 end,
         keeper = {warn = WTF.Warn},
         tooltip = ShowTooltip,
         onDragStart = function() WTF.BeginDrag(anchor) end,
@@ -227,24 +220,19 @@ function WTF.InitializeControl()
     WTF.RefreshControl()
 end
 
--- /wtf reset_focus: forget that this client's focus works, so the macros fall
--- back again until a focus is seen (out of combat; in combat, after it). The
--- Toolkit's flag is one for every Dyre's AddOn, so this resets them all.
-local RESET_FALLBACK = "WTF's macros try your focus, then the mob under the mouse, then your target, "
+-- /grim reset_focus: forget that this client's focus works, so the macros fall
+-- back again until a focus is seen (out of combat; in combat, after it).
+local RESET_FALLBACK = "Grimoire's macros try your focus, then the mob under the mouse, then your target, "
     .. "until a focus is seen to work."
 
 function WTF.ResetFocusWorks()
-    if not WTF.shared then
-        WTF.accountDB.focusWorks = nil
-        WTF.Report("Focus check reset. " .. RESET_FALLBACK)
-        return
+    if WTF.shared then
+        WTF.shared.ResetFocusWorks()
     end
-    WTF.shared.ResetFocusWorks()
-    WTF.Report(WTF.shared.FOCUS_RESET_TEXT or "Focus check reset for every Dyre's AddOn.")
-    WTF.Report(RESET_FALLBACK)
+    WTF.Report("Focus check reset. " .. RESET_FALLBACK)
 end
 
--- /wtf debug_control: the IDs, each row's mob and click, and the last cast.
+-- /grim debug_control: the IDs, each row's mob and click, and the last cast.
 function WTF.ReportControlDebug()
     WTF.Report(string.format("debug_control available=%s focusWorks=%s", tostring(control.available),
         tostring(WTF.FocusWorks())))

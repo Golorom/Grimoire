@@ -1,4 +1,5 @@
 local _, ns = ...
+ns = ns.engine -- Grimoire: the engines run in their own namespace (Engine\Shim.lua)
 local DyresToolkit = ns.toolkit
 
 -- Health bars of other frame AddOns, and the damage-to-come block and DIES
@@ -47,7 +48,7 @@ local DyresToolkit = ns.toolkit
 -- that comes and goes (a target-of-target, a group's threat text) moves the
 -- badge then.
 
-local STRIPES = "Interface\\AddOns\\DyresToolkit\\Textures\\Stripes"
+local STRIPES = "Interface\\AddOns\\Grimoire\\Textures\\Stripes"
 local WHITE = "Interface\\Buttons\\WHITE8X8"
 local OUTLINE = 1
 -- A bar whose own fill is within this much of the block's color (red + green
@@ -1023,6 +1024,10 @@ local sources = {}
 local function InFamily(addon)
     if type(addon) ~= "string" then
         return false
+    end
+    -- Grimoire: its own claims count (the engines are private to it).
+    if addon == ns.ADDON then
+        return true
     end
     local read = type(C_AddOns) == "table" and C_AddOns.GetAddOnMetadata or rawget(_G, "GetAddOnMetadata")
     if type(read) ~= "function" then

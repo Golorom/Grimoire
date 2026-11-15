@@ -241,7 +241,7 @@ local function WriteMacro(name, body, oldNames)
         if CharacterMacroLimit() - numCharacter <= MACRO_SLOT_CUSHION then
             if not macros.warned then
                 macros.warned = true
-                WTF.Warn("No free character macro slot for \"" .. name .. "\"; free one and WTF adds it.")
+                WTF.Warn("No free character macro slot for \"" .. name .. "\"; free one and Grimoire adds it.")
             end
             return
         end
@@ -405,13 +405,6 @@ local function LogTrade(event, ...)
     stones.tradeLog[TRADE_LOG_SIZE + 1] = nil
 end
 
--- The gift whisper goes when the trade window opens for a trade the
--- Healthstone button started (author's choice), not on completion.
-local function WhisperGift(trade)
-    stones.lastGift = trade.whisperTo or trade.target or "nobody (no target name)"
-    WTF.WhisperHealthstoneGift(trade.target, trade.whisperTo)
-end
-
 local function FreeTradeSlot()
     for slot = 1, TRADE_SLOT_COUNT do
         if not GetTradePlayerItemLink(slot) then
@@ -430,7 +423,7 @@ end
 -- silent (1.7.1, John: the trade opened with nothing in it): each tries
 -- again or warns, and the trade log of /wtf debug_stones names the reason
 -- ("place <reason> <detail>").
-local DRAG_YOURSELF = "The game did not let WTF put the Healthstone into the trade window; drag it in yourself."
+local DRAG_YOURSELF = "The game did not let Grimoire put the Healthstone into the trade window; drag it in yourself."
 local PlaceTradeStone
 
 local function LogPlace(reason, detail)
@@ -521,9 +514,8 @@ local function PostClick(button, mouseButton, down)
     if kind == "healthstone" and mouseButton == "LeftButton" and button.mode == "trade" then
         -- The press and the release both arrive here; trade once.
         if not down and button.tradeItem then
-            local target, whisperTo = WTF.FriendlyTargetNames()
-            stones.pendingTrade = {itemID = button.tradeItem, time = GetTime(), target = target,
-                whisperTo = whisperTo}
+            -- Grimoire: no gift whisper; only the trade.
+            stones.pendingTrade = {itemID = button.tradeItem, time = GetTime()}
             InitiateTrade("target")
         end
         return
@@ -803,7 +795,6 @@ events:SetScript("OnEvent", function(_, event, ...)
     if event == "TRADE_SHOW" then
         local trade = stones.pendingTrade
         if trade and GetTime() - trade.time <= TRADE_WAIT then
-            WhisperGift(trade)
             PlaceTradeStone(false)
         else
             stones.pendingTrade = nil
@@ -871,7 +862,7 @@ function WTF.InitializeStones()
     if not macros.available and WTF.db.stones.macros then
         WTF.Report("Stone macros stay off: this client lacks " .. macros.missing .. ".")
     end
-    local bar = CreateFrame("Frame", "WarlockToolsForeverStones", UIParent, "BackdropTemplate")
+    local bar = CreateFrame("Frame", "GrimoireStones", UIParent, "BackdropTemplate")
     bar:SetSize(PADDING * 2 + BUTTON_SIZE * 2 + BUTTON_GAP, PADDING * 2 + BUTTON_SIZE)
     bar:SetBackdrop({bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
         edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border", edgeSize = 12,
@@ -887,8 +878,8 @@ function WTF.InitializeStones()
     bar.mover = WTF.CreateMover(bar)
     WTF.RegisterMovable(bar, function(position) WTF.db.stones.position = position end)
     buttons.bar = bar
-    buttons.soulstone = CreateStoneButton(bar, "WarlockToolsForeverSoulstone", "soulstone", 1)
-    buttons.healthstone = CreateStoneButton(bar, "WarlockToolsForeverHealthstone", "healthstone", 2)
+    buttons.soulstone = CreateStoneButton(bar, "GrimoireSoulstone", "soulstone", 1)
+    buttons.healthstone = CreateStoneButton(bar, "GrimoireHealthstone", "healthstone", 2)
     -- The saved place is in the bar's own scale, so the scale comes first.
     bar:SetScale(WTF.db.stones.scale / 100)
     PlaceBar(bar)
@@ -959,8 +950,8 @@ function WTF.ReportStoneDebug()
     local healthRank = WTF.HealthstoneRankForTarget()
     WTF.Report(string.format("debug_stones targetLevel=%s healthstoneRank=%s pending=%s",
         tostring(FriendlyPlayerLevel()), tostring(healthRank and healthRank.spell), tostring(stones.pending)))
-    WTF.Report(string.format("debug_stones lastGiftWhisper=%s moveRestricted=%s lastRestricted=%s keyHook=%s",
-        tostring(stones.lastGift), tostring(WTF.MoveRestricted()),
+    WTF.Report(string.format("debug_stones moveRestricted=%s lastRestricted=%s keyHook=%s",
+        tostring(WTF.MoveRestricted()),
         stones.lastRestricted and string.format("%.1fs ago", GetTime() - stones.lastRestricted) or "never",
         tostring(WTF.keyInputHooked == true)))
     local now = GetTime()

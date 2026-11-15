@@ -12,15 +12,15 @@ local _, WTF = ...
 
 local TRACKER_PRIORITY = 10
 local DEFAULT_POINT = {"CENTER", "CENTER", -260, 120}
-local NAMES = {target = "WarlockToolsForeverTracker", focus = "WarlockToolsForeverTrackerFocus",
-    list = "WarlockToolsForeverTrackerList"}
+local NAMES = {target = "GrimoireTracker", focus = "GrimoireTrackerFocus",
+    list = "GrimoireTrackerList"}
 
 -- The smart curse (John, 2026-11-10, from a player comment; Toolkit 2.7.0):
 -- the engine's hidden secure button for a key binding (Bindings.xml), and
 -- the "! Curse" macro with the same text.
-local SMART_CURSE_BUTTON = "WarlockToolsForeverSmartCurse"
+local SMART_CURSE_BUTTON = "GrimoireSmartCurse"
 local CURSE_MACRO = "! Curse"
-BINDING_HEADER_WARLOCKTOOLSFOREVER = "Warlock Tools Forever"
+BINDING_HEADER_GRIMOIRE = "Grimoire"
 _G["BINDING_NAME_CLICK " .. SMART_CURSE_BUTTON .. ":LeftButton"] = "Smart curse"
 
 local tracker = {available = false}
@@ -161,9 +161,9 @@ function WTF.SetCurseMarker(on)
     end
 end
 
--- Whether the Toolkit draws the outline at a set width (2.8.0 or later).
+-- Whether the engine draws the outline at a set width (Toolkit 2.8.0 or later).
 function WTF.TrackerOutlineAvailable()
-    local toolkit = rawget(_G, "DyresToolkit")
+    local toolkit = WTF.engine and WTF.engine.toolkit
     return type(toolkit) == "table" and type(toolkit.TRACKER_OUTLINE) == "table"
 end
 
@@ -195,7 +195,7 @@ function WTF.InitializeTracker()
         return
     end
     local engine, why = WTF.shared.CreateDotTracker({
-        addon = "WarlockToolsForever",
+        addon = "Grimoire",
         priority = TRACKER_PRIORITY,
         class = "WARLOCK",
         store = WTF.db.tracker,
@@ -205,8 +205,8 @@ function WTF.InitializeTracker()
         panelColor = WTF.PanelColor,
         movable = {register = WTF.RegisterMovable, beginDrag = WTF.BeginDrag, endDrag = WTF.EndDrag},
         locked = function() return WTF.db.locked ~= false end,
-        -- The toolkit's Ctrl-drag of a locked frame (Layout.lua has none).
-        ctrlMove = WTF.toolkit ~= nil,
+        -- The Toolkit's Ctrl-drag of a locked frame; Layout.lua has none.
+        ctrlMove = false,
         predictor = WTF.predictor,
         onSpellsChanged = function() WTF.RefreshPlateDots() end,
         onSmartCurse = function(body) WriteCurseMacro(body) end,

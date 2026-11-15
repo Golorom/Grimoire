@@ -1,4 +1,5 @@
 local _, ns = ...
+ns = ns.engine -- Grimoire: the engines run in their own namespace (Engine\Shim.lua)
 local DyresToolkit = ns.toolkit
 
 -- Group announcements, for every Dyre's AddOn (Toolkit 2.5.0, engine stage A;
@@ -55,9 +56,9 @@ function DyresToolkit.GroupChannel(say)
     end
 end
 
-function DyresToolkit.SendChat(message, chatType, target)
-    local send = type(C_ChatInfo) == "table" and C_ChatInfo.SendChatMessage or SendChatMessage
-    send(message, chatType, nil, target)
+-- Grimoire: sends nothing. Grimoire never talks to other players; only the
+-- marker codes and text helpers of this file are used.
+function DyresToolkit.SendChat()
 end
 
 -- A message text with %X tokens filled from values ({T = target name, Z =

@@ -1,4 +1,5 @@
 local _, ns = ...
+ns = ns.engine -- Grimoire: the engines run in their own namespace (Engine\Shim.lua)
 local DyresToolkit = ns.toolkit
 
 -- Moved from Warlock Tools Forever's AuraEngine.lua (1.4.0, sha256
