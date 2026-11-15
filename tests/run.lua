@@ -7203,29 +7203,71 @@ test("shield: the mirror setting flips the crescents and the number to the left 
 end)
 
 test("key labels: the pet bar's labels keep their size when Edit Mode scales its buttons", function()
-    local function label()
-        return {font = "Fonts\\ARIALN.TTF", fontSize = 12, fontFlags = "OUTLINE",
-            GetFont = function(self) return self.font, self.fontSize, self.fontFlags end,
-            SetFont = function(self, font, size, flags) self.font, self.fontSize, self.fontFlags = font, size, flags end}
+    -- A label as the client's FontString: font, anchors, justification, size.
+    local function label(points, justify, width, height)
+        local region = {font = "Fonts\\ARIALN.TTF", fontSize = 12, fontFlags = "OUTLINE", points = points or {},
+            justify = justify, width = width, height = height}
+        function region:GetFont() return self.font, self.fontSize, self.fontFlags end
+        function region:SetFont(font, size, flags) self.font, self.fontSize, self.fontFlags = font, size, flags end
+        function region:GetNumPoints() return #self.points end
+        function region:GetPoint(index) return unpack(self.points[index]) end
+        function region:ClearAllPoints() self.points = {} end
+        function region:SetPoint(...) self.points[#self.points + 1] = {...} end
+        function region:GetJustifyH() return self.justify end
+        function region:SetJustifyH(value) self.justify = value end
+        function region:GetWidth() return self.width end
+        function region:GetHeight() return self.height end
+        function region:SetSize(w, h) self.width, self.height = w, h end
+        return region
     end
     local scale = 1.5
     local globals = {NUM_PET_ACTION_SLOTS = 10}
     for index = 1, 10 do
-        globals["PetActionButton" .. index] = {HotKey = label(), GetEffectiveScale = function() return scale end}
+        local button = {GetEffectiveScale = function() return scale end}
+        -- The pet template's own spot: one anchor, centered, its own size.
+        button.HotKey = label({{"TOP", button, "TOP", 0, -2}}, "CENTER", 36, 10)
+        globals["PetActionButton" .. index] = button
     end
+    -- The action bars' spot: across the top, right-justified.
+    local action = {GetEffectiveScale = function() return 1.3 end}
+    action.HotKey = label({{"TOPLEFT", action, "TOPLEFT", -2, -3}, {"TOPRIGHT", action, "TOPRIGHT", -1, -3}}, "RIGHT")
+    globals.ActionButton1 = action
     local state = fixture({globals = globals})
-    local hotkey = state.env.PetActionButton1.HotKey
+    local pet = state.env.PetActionButton1
+    local hotkey = pet.HotKey
     equal(state.wtf.db.keyLabels.petNormal, true, "on by default")
     equal(hotkey.fontSize, 12 / 1.5, "a 150% pet bar keeps 100% labels")
     equal(hotkey.font, "Fonts\\ARIALN.TTF")
     equal(hotkey.fontFlags, "OUTLINE")
     equal(state.env.PetActionButton10.HotKey.fontSize, 12 / 1.5)
+    equal(#hotkey.points, 2, "the action bars' two anchors")
+    equal(hotkey.points[1][1], "TOPLEFT")
+    equal(hotkey.points[1][2], pet, "on the pet button, not the action button")
+    equal(hotkey.points[2][1], "TOPRIGHT")
+    equal(hotkey.points[2][4], -1 / 1.5, "offsets at 100% too")
+    equal(hotkey.points[2][5], -3 / 1.5)
+    equal(hotkey.justify, "RIGHT")
     scale = 2
     state.emit("EDIT_MODE_LAYOUTS_UPDATED")
     equal(hotkey.fontSize, 12 / 2, "follows a new size from the client's size, not its own last change")
+    equal(hotkey.points[2][4], -1 / 2)
+    -- In combat only the font follows; the anchors wait for its end.
+    state.combat = true
+    scale = 1.5
+    state.emit("EDIT_MODE_LAYOUTS_UPDATED")
+    equal(hotkey.fontSize, 12 / 1.5)
+    equal(hotkey.points[2][4], -1 / 2, "anchors wait in combat")
+    state.combat = false
+    state.emit("PLAYER_REGEN_ENABLED")
+    equal(hotkey.points[2][4], -1 / 1.5, "and follow when it ends")
     state.wtf.db.keyLabels.petNormal = false
     state.wtf.RefreshKeyLabels()
     equal(hotkey.fontSize, 12, "off: the client's own size again")
+    equal(#hotkey.points, 1, "and its own spot")
+    equal(hotkey.points[1][1], "TOP")
+    equal(hotkey.points[1][2], pet)
+    equal(hotkey.justify, "CENTER")
+    equal(hotkey.width, 36)
     equal(state.wtf.SanitizeKeyLabels({petNormal = false}).petNormal, false)
 end)
 
