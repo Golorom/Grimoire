@@ -730,7 +730,8 @@ local function Remind(kind, message)
         return
     end
     status.reminded[kind] = now
-    WTF.Report(message)
+    -- Grimoire: to the alert window (chat when it is off).
+    WTF.Alert("stones:" .. kind, message, "warn", {throttle = 0})
 end
 
 function WTF.RemindStones()
@@ -740,11 +741,11 @@ function WTF.RemindStones()
     end
     if settings.remindSoulstone and BestKnownRank(SOULSTONES) and not SoulstoneUp() then
         Remind("soulstone", CountCarried(SOULSTONES) > 0
-            and "No Soulstone is up. Left-click the Soulstone button to apply one."
-            or "No Soulstone is up. Right-click the Soulstone button to create one.")
+            and "No Soulstone up. Left-click the Soulstone button."
+            or "No Soulstone. Right-click the Soulstone button to make one.")
     end
     if settings.remindHealthstone and BestKnownRank(HEALTHSTONES) and CountCarried(HEALTHSTONES) == 0 then
-        Remind("healthstone", "You carry no Healthstone. Right-click the Healthstone button to create one.")
+        Remind("healthstone", "No Healthstone. Right-click the Healthstone button to make one.")
     end
 end
 
@@ -755,7 +756,7 @@ local function OnSoulstoneEnd()
     end
     WTF.db.stones.soulstone = nil
     if WTF.db.stones.enabled and WTF.db.stones.remindSoulstone then
-        WTF.Report("Your Soulstone on " .. soulstone.name .. " has ended.")
+        WTF.Alert("soulstone:ended", "Soulstone on " .. soulstone.name .. " ended.", "warn", {throttle = 0})
         status.reminded.soulstone = nil
         WTF.RemindStones()
     end

@@ -11,6 +11,7 @@ local STONES_TITLE = "Stones"
 local TRACKER_TITLE = "DoT Tracker"
 local DOTS_TITLE = "DoTs"
 local CONTROL_TITLE = "Control"
+local ALERTS_TITLE = "Alerts"
 local UNAVAILABLE = "The AddOn settings page is unavailable on this client. Use /grim shards for status."
 local GOLD = {1, 0.82, 0}
 
@@ -541,7 +542,7 @@ end
 local function AddTrackerPage(parent)
     local page, layout = Settings.RegisterVerticalLayoutSubcategory(parent, TRACKER_TITLE)
     Heading(layout, "General", "Settings that every DoT tracker panel shares, and the nameplate dots.")
-    local theme = Proxy(page, "GRIMOIRE_TRACKER_THEME", Settings.VarType.String, "Theme", "bars",
+    local theme = Proxy(page, "GRIMOIRE_TRACKER_THEME", Settings.VarType.String, "Theme", "compact",
         function() return WTF.db.tracker.theme end,
         function(value) WTF.SetTrackerTheme(value) end)
     Settings.CreateDropdown(page, theme, function()
@@ -915,6 +916,115 @@ local function CreateDotsPage()
     return page
 end
 
+-- Grimoire 0.2: the alert window, reminders, combat warnings, and the shield.
+local function Seconds(value)
+    return string.format("%d s", value)
+end
+
+local function Plain(value)
+    return tostring(value)
+end
+
+local function Slider(page, variable, name, default, getValue, setValue, minValue, maxValue, step, format, tooltip)
+    local setting = Proxy(page, variable, Settings.VarType.Number, name, default, getValue, setValue)
+    return Settings.CreateSlider(page, setting, SliderOptions(minValue, maxValue, step, format), tooltip)
+end
+
+local function ApplyProcSounds()
+    if WTF.ApplyProcSounds then
+        WTF.ApplyProcSounds()
+    end
+end
+
+local function AddAlertsPage(parent)
+    local page, layout = Settings.RegisterVerticalLayoutSubcategory(parent, ALERTS_TITLE)
+    Heading(layout, "Alert window", "Short warnings for you only. A line shows at once, stays, then fades. "
+        .. "Nothing is sent to other players.")
+    if type(CreateSettingsButtonInitializer) == "function" and type(layout) == "table"
+            and type(layout.AddInitializer) == "function" then
+        layout:AddInitializer(CreateSettingsButtonInitializer("Test the alerts", "Show test alerts",
+            WTF.TestAlerts, "Three sample lines, one of each color, with a sound. Same as /grim test.", true))
+    end
+    Flag(page, "GRIMOIRE_ALERTS_ENABLED", "Show the alert window", "alerts", "enabled", true,
+        "Off: alerts go to chat instead.", function() WTF.RefreshAlerts() end)
+    Flag(page, "GRIMOIRE_ALERTS_CHAT", "Also print alerts in chat", "alerts", "chat", false,
+        "Each alert also as a chat line. Chat addons that filter by addon (Chattynator) can put them in a tab.")
+    Flag(page, "GRIMOIRE_ALERTS_SOUNDS", "Play alert sounds", "alerts", "sounds", true,
+        "The game sounds of the threat, demon, cooldown, and Nightfall alerts.", ApplyProcSounds)
+    Slider(page, "GRIMOIRE_ALERTS_HOLD", "Hold time", WTF.DEFAULT_ALERT_HOLD,
+        function() return WTF.db.alerts.hold end,
+        function(value)
+            WTF.db.alerts.hold = WTF.SanitizeWhole(value, WTF.ALERT_HOLD_MIN, WTF.ALERT_HOLD_MAX, WTF.DEFAULT_ALERT_HOLD)
+            WTF.RefreshAlerts()
+        end, WTF.ALERT_HOLD_MIN, WTF.ALERT_HOLD_MAX, 1, Seconds, "How long a line stays before it fades.")
+    Slider(page, "GRIMOIRE_ALERTS_FADE", "Fade time", WTF.DEFAULT_ALERT_FADE,
+        function() return WTF.db.alerts.fade end,
+        function(value)
+            WTF.db.alerts.fade = WTF.SanitizeWhole(value, WTF.ALERT_FADE_MIN, WTF.ALERT_FADE_MAX, WTF.DEFAULT_ALERT_FADE)
+            WTF.RefreshAlerts()
+        end, WTF.ALERT_FADE_MIN, WTF.ALERT_FADE_MAX, 1, Seconds, "How long a line takes to fade out.")
+    Slider(page, "GRIMOIRE_ALERTS_LINES", "Lines", WTF.DEFAULT_ALERT_LINES,
+        function() return WTF.db.alerts.lines end,
+        function(value)
+            WTF.db.alerts.lines = WTF.SanitizeWhole(value, WTF.ALERT_LINES_MIN, WTF.ALERT_LINES_MAX,
+                WTF.DEFAULT_ALERT_LINES)
+            WTF.RefreshAlerts()
+        end, WTF.ALERT_LINES_MIN, WTF.ALERT_LINES_MAX, 1, Plain, "At most this many lines at once.")
+    Slider(page, "GRIMOIRE_ALERTS_SCALE", "Window size", WTF.DEFAULT_FRAME_SCALE,
+        function() return WTF.db.alerts.scale end,
+        function(value) WTF.SetAlertsScale(value) end,
+        WTF.FRAME_SCALE_MIN, WTF.FRAME_SCALE_MAX, WTF.FRAME_SCALE_STEP, true, "How big the alert text is.")
+    Heading(layout, "Reminders", "Out of combat. Each has an icon you click to cast.")
+    Flag(page, "GRIMOIRE_REMIND_ARMOR", "Demon Armor reminder", "reminders", "armor", true,
+        "An icon and a line while neither Demon Armor nor Demon Skin is on you, and a line a minute before it "
+            .. "runs out. Click the icon to cast it.", function() WTF.RefreshReminders() end)
+    Flag(page, "GRIMOIRE_REMIND_DEMON", "Demon reminder", "reminders", "demon", true,
+        "An icon while you have no demon out (hidden while mounted), and a line after combat. Click it to summon "
+            .. "your last demon.", function() WTF.RefreshReminders() end)
+    Heading(layout, "In combat")
+    Flag(page, "GRIMOIRE_THREAT_ENABLED", "Threat warning", "threat", "enabled", true,
+        "A red line and a sound when a mob your Voidwalker or a tank held turns to you. Mobs you pull "
+            .. "yourself never warn.")
+    Flag(page, "GRIMOIRE_THREAT_RISK", "Warn before you pull", "threat", "risk", true,
+        "A yellow line and a softer sound when you pass the one holding the mob but it has not turned yet.")
+    Flag(page, "GRIMOIRE_THREAT_SOUNDS", "Threat sounds", "threat", "sounds", true,
+        "The sounds of the two threat lines.")
+    Flag(page, "GRIMOIRE_PET_DIED", "Demon died", "pet", "died", true,
+        "A red line and a sound when your demon dies in combat, and when Enslave Demon breaks.")
+    Flag(page, "GRIMOIRE_PET_LOW", "Demon low health", "pet", "low", true,
+        "A line when your demon drops below the share below, in combat. Only where the game lets addons read "
+            .. "pet health in combat (/grim debug_checks).")
+    Slider(page, "GRIMOIRE_PET_LOW_SHARE", "Demon low at", WTF.DEFAULT_PET_LOW,
+        function() return WTF.db.pet.lowShare end,
+        function(value)
+            WTF.db.pet.lowShare = WTF.SanitizeWhole(value, WTF.PET_LOW_MIN, WTF.PET_LOW_MAX, WTF.DEFAULT_PET_LOW)
+        end, WTF.PET_LOW_MIN, WTF.PET_LOW_MAX, 5, true, "The health share for the line above.")
+    Flag(page, "GRIMOIRE_PROCS_SOUND", "Nightfall sound", "procs", "sound", true,
+        "The game plays the Imp's spell chirp the moment Nightfall (Shadow Trance) lands, also in combat.",
+        ApplyProcSounds)
+    Flag(page, "GRIMOIRE_PROCS_ICON", "Nightfall icon", "procs", "icon", true,
+        "A Shadow Trance icon with its time left while it is up. Unlock frames to move it.",
+        function() WTF.RefreshProcs() end)
+    Flag(page, "GRIMOIRE_COOLDOWNS_ENABLED", "Cooldown alerts", "cooldowns", "enabled", true,
+        "A line just before a chosen spell is ready again, timed from your cast.")
+    Flag(page, "GRIMOIRE_COOLDOWNS_SOUND", "Cooldown sound", "cooldowns", "sound", true,
+        "The game's talent-ready sound with each cooldown line.")
+    for _, def in ipairs(WTF.COOLDOWN_SPELLS or {}) do
+        local setting = Proxy(page, "GRIMOIRE_COOLDOWN_" .. def.key:upper(), Settings.VarType.Boolean,
+            "  " .. def.label, def.on,
+            function() return WTF.db.cooldowns.spells[def.key] end,
+            function(value) WTF.db.cooldowns.spells[def.key] = value == true end)
+        Settings.CreateCheckbox(page, setting, "A line when " .. def.label .. " is ready again.")
+    end
+    Heading(layout, "Shield", "A crescent beside your character with your remaining absorb: Shadow Ward, "
+        .. "Sacrifice, or any shield on you. From Dyre's Shields Up.")
+    Flag(page, "GRIMOIRE_SHIELD_ENABLED", "Shield display", "shield", "enabled", true,
+        "Shows while a shield is on you. Unlock frames to move it.",
+        function() WTF.ShieldDisplay.Refresh() end)
+    Flag(page, "GRIMOIRE_SHIELD_NUMBER", "Show the absorb number", "shield", "number", true,
+        "The amount left, under the crescent.", function() WTF.ShieldDisplay.Refresh() end)
+end
+
 function WTF.InitializeOptions()
     if not HasSettingsAPI() then
         return
@@ -963,6 +1073,7 @@ function WTF.InitializeOptions()
     WTF.dotsPage = dotsPage
     Settings.RegisterCanvasLayoutSubcategory(category, dotsPage, DOTS_TITLE)
     AddControlPage(category)
+    AddAlertsPage(category)
     Settings.RegisterAddOnCategory(category)
 end
 

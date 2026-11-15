@@ -36,9 +36,11 @@ local TOOLKIT_FILES = {"Engine/Shim.lua", "Engine/Auras.lua", "Engine/Units.lua"
     "Engine/Control.lua", "Engine/DotTracker.lua", "Engine/PlateDots.lua", "Engine/DotPredict.lua"}
 local TOOLKIT_DIR = ""
 local RUNTIME_FILES = {"Commands.lua", "Core.lua", "Layout.lua", "Shards.lua", "Stones.lua", "Tracker.lua",
-    "Dots.lua", "Predict.lua", "Control.lua", "Probe.lua", "Options.lua"}
+    "Dots.lua", "Predict.lua", "Control.lua", "Alerts.lua", "Reminders.lua", "Threat.lua", "Pet.lua", "Procs.lua",
+    "Cooldowns.lua", "Shield.lua", "Probe.lua", "Options.lua"}
 local SHARD = 6265
-local SPELLS = {[1120] = "Drain Soul", [11675] = "Drain Soul", [8288] = "Drain Soul", [686] = "Shadow Bolt", [172] = "Corruption",
+local SPELLS = {[688] = "Summon Imp", [697] = "Summon Voidwalker", [691] = "Summon Felhunter",
+    [7812] = "Sacrifice", [2641] = "Dismiss Pet", [17941] = "Shadow Trance", [1120] = "Drain Soul", [11675] = "Drain Soul", [8288] = "Drain Soul", [686] = "Shadow Bolt", [172] = "Corruption",
     [6222] = "Corruption", [980] = "Curse of Agony", [698] = "Ritual of Summoning",
     [20707] = "Soulstone Resurrection", [20762] = "Soulstone Resurrection",
     [693] = "Create Soulstone", [20752] = "Create Soulstone",
@@ -654,6 +656,10 @@ local function fixture(options)
     env.UnitIsUnit = function(a, b) return state.units[a] == state.units[b] end
     -- In client, combat makes index access raise an error for AddOn code.
     local function auras(unit, filter)
+        -- Grimoire 0.2: the Nightfall icon reads your buffs (state.buffList).
+        if filter == "HELPFUL" and unit == "player" then
+            return state.buffList or {}
+        end
         equal(filter, "HARMFUL|PLAYER")
         local data = state.units[unit]
         return data and data.auras or {}
@@ -1204,6 +1210,30 @@ local function fixture(options)
         accountDB = {engine = state.toolkitDB}
     end
     env.GrimoireAccountDB = accountDB
+    -- Grimoire 0.2 makes Compact and smaller sizes the default; the upstream
+    -- layout tests keep WTF's look (Bars, 22 and 110) unless a test brings
+    -- its own saved settings or asks for a fresh install (options.freshDB).
+    if options.db == nil and not options.freshDB then
+        options.db = {tracker = {theme = "bars"}}
+    end
+    -- A test's own saved tracker settings count as already on 0.2's layout
+    -- (options.oldSave: as saved before 0.2), with WTF's compact sizes
+    -- where it names none.
+    if type(options.db) == "table" and not options.oldSave then
+        local tracker = options.db.tracker
+        if tracker == nil then
+            tracker = {}
+            options.db.tracker = tracker
+        end
+        if type(tracker) == "table" then
+            tracker.layoutVersion = tracker.layoutVersion or 2
+            if tracker.theme == nil then tracker.theme = "bars" end
+            tracker.sizes = type(tracker.sizes) == "table" and tracker.sizes or {}
+            if tracker.sizes.compact == nil then
+                tracker.sizes.compact = {iconSize = 22, nameWidth = 110, textScale = 100, namePosition = "left"}
+            end
+        end
+    end
     env.GrimoireDB = options.db
     state.env = env
     state.emit("ADDON_LOADED", "Grimoire")
@@ -1307,7 +1337,8 @@ test("commands are one word; extra words and unknown commands show usage", funct
     equal(parse("debug_shards"), "debug_shards")
     local command, usage = parse("shards 10")
     equal(command, nil)
-    contains(usage, "/grim debug_shards")
+    contains(usage, "debug_shards")
+    contains(usage, "/grim test")
     equal(parse("dance"), nil)
     equal(parse(nil), nil)
 end)
@@ -1403,51 +1434,6 @@ local MOVED_LINES = {
 test("other classes get no moved-feature lines", function()
     local state = fixture({class = "MAGE"})
     equal(table.concat(state.messages, "\n"):find("moved there from WTF", 1, true), nil)
-end)
-test("the old shield, chime, Nightfall, and reminder settings stay exactly as saved", function()
-    local shield = {enabled = false, scale = 80, position = {point = "LEFT", relativePoint = "LEFT", x = 3, y = 4},
-        breakSoundKey = "pickglass", extra = "kept"}
-    local chimes = {enabled = false, lead = 7, spells = {deathcoil = false}, sounds = {howl = "tts"}}
-    local alerts = {nightfall = true, nightfallSound = "not a sound"}
-    local reminders = {enabled = false, spells = {armor = false}, last = {armor = 706}}
-    local state = fixture({db = {shield = shield, chimes = chimes, alerts = alerts, reminders = reminders}})
-    local db = state.wtf.db
-    equal(db.shield, shield, "the same tables, for the new AddOns to copy")
-    equal(db.chimes, chimes)
-    equal(db.alerts, alerts)
-    equal(db.reminders, reminders)
-    equal(db.shield.scale, 80)
-    equal(db.shield.extra, "kept")
-    equal(db.shield.locked, nil, "no lock flag added")
-    equal(db.alerts.nightfallSound, "not a sound", "not repaired: WTF no longer reads it")
-    equal(db.chimes.lead, 7)
-    equal(db.reminders.last.armor, 706)
-    state.slash("unlock")
-    state.slash("lock")
-    equal(db.shield.locked, nil, "the lock leaves them alone too")
-    local fresh = fixture()
-    equal(fresh.wtf.db.shield, nil, "nothing new is saved")
-    equal(fresh.wtf.db.chimes, nil)
-    equal(fresh.wtf.db.alerts, nil)
-    equal(fresh.wtf.db.reminders, nil)
-end)
-test("WTF draws no shield, plays no sounds, and shows no Demon Armor icon of its own", function()
-    local state = fixture()
-    equal(state.wtf.ShieldDisplay, nil)
-    equal(state.env.GrimoireReminder_armor, nil)
-    for _, variable in ipairs({"GRIMOIRE_SHIELD_ENABLED", "GRIMOIRE_CHIMES_ENABLED", "GRIMOIRE_REMINDERS_ENABLED",
-        "GRIMOIRE_ALERTS_NIGHTFALL", "GRIMOIRE_SHIELD_SCALE", "GRIMOIRE_CHIMES_LEAD"}) do
-        equal(state.settings[variable], nil, variable .. " is gone")
-    end
-    for _, command in ipairs({"debug_shield", "debug_chimes", "debug_reminders"}) do
-        state.clear()
-        state.slash(command)
-        contains(state.last(), "Grimoire: Use /grim", command .. " is gone")
-    end
-    state.units.player.auras = {{name = "Shadow Trance", spellId = 17941}}
-    state.emit("UNIT_AURA", "player")
-    equal(state.auraSounds, nil, "no Nightfall sound registered")
-    equal(state.played, nil, "no sound played")
 end)
 
 -- Saved settings ---------------------------------------------------------------
@@ -2899,10 +2885,8 @@ test("WTF never calls SetRaidTarget: markers come only from the game's /tm in a 
     state.clear()
     state.slash("debug_control")
     equal(table.concat(state.messages, "|"):find("marked=", 1, true), nil, "no marked= in debug_control")
-    local old = fixture({db = {control = {markers = {banish = 3}}}})
-    equal(old.wtf.db.control.markers.banish, 5, "the old diamond default becomes the moon")
-    local chosen = fixture({db = {control = {markers = {banish = 8}, markersVersion = 2}}})
-    equal(chosen.wtf.db.control.markers.banish, 8, "a marker you chose stays")
+    local old = fixture({db = {control = {markers = {banish = 5}, markersVersion = 2}}})
+    equal(next(old.wtf.db.control.markers), nil, "Grimoire: saved markers are dropped")
 end)
 test("a Banish counts only at your focus; your focus becoming another mob or none ends its row", function()
     local state = controlFixture()
@@ -3658,10 +3642,17 @@ test("a Soulstone on someone is remembered, reported, and announced when it ends
     equal(state.messages[1], "Grimoire: Soulstone on Meatrod Theog, 30 min left.")
     contains(state.messages[2], "You carry 3 Soulstone(s) and 1 Healthstone(s).")
     state.now = state.now + 30 * 60 + 2
-    state.clear()
+    local before = #state.wtf.AlertHistory()
     state.runTimers()
-    equal(state.messages[1], "Grimoire: Your Soulstone on Meatrod Theog has ended.")
-    contains(state.messages[2], "No Soulstone is up. Left-click the Soulstone button to apply one.")
+    local history = {}
+    for index = before + 1, #state.wtf.AlertHistory() do
+        local entry = state.wtf.AlertHistory()[index]
+        if entry.key:find("^stones:") or entry.key:find("^soulstone:") then history[#history + 1] = entry end
+    end
+    equal(#history, 2, "two stone lines")
+    equal(history[1].text, "Soulstone on Meatrod Theog ended.")
+    equal(history[2].text, "No Soulstone up. Left-click the Soulstone button.")
+    equal(history[2].level, "warn")
     equal(state.wtf.db.stones.soulstone, nil)
 end)
 test("a Soulstone on yourself is remembered as on you", function()
@@ -3678,29 +3669,41 @@ test("a remembered Soulstone survives a reload until it ends", function()
 end)
 test("reminders come after a fight, in an instance, or in a new group, at most every 10 minutes", function()
     local state = stonesFixture({carried = {}})
-    state.clear()
+    local function StoneLines()
+        local lines = {}
+        for _, entry in ipairs(state.wtf.AlertHistory()) do
+            if entry.key:find("^stones:") then lines[#lines + 1] = entry.text end
+        end
+        return lines
+    end
+    local start = #StoneLines()
     state.emit("PLAYER_REGEN_ENABLED")
-    equal(#state.messages, 2)
-    contains(state.messages[1], "No Soulstone is up. Right-click the Soulstone button to create one.")
-    contains(state.messages[2], "You carry no Healthstone.")
-    state.clear()
+    local lines = StoneLines()
+    equal(#lines, start + 2)
+    equal(lines[start + 1], "No Soulstone. Right-click the Soulstone button to make one.")
+    equal(lines[start + 2], "No Healthstone. Right-click the Healthstone button to make one.")
     state.emit("GROUP_JOINED")
-    equal(#state.messages, 0, "throttled")
+    equal(#StoneLines(), start + 2, "throttled")
     state.now = state.now + 601
     state.inInstance = true
     state.emit("PLAYER_ENTERING_WORLD")
-    equal(#state.messages, 2)
+    equal(#StoneLines(), start + 4)
+    equal(#state.messages > 0 and state.messages[#state.messages]:find("No Healthstone", 1, true), nil,
+        "not in chat: the alert window has them")
 end)
 test("reminders can be turned off, and need a known rank", function()
-    local state = stonesFixture({carried = {}, db = {stones = {remindSoulstone = false}}})
+    -- With the alert window off, they go to chat.
+    local state = stonesFixture({carried = {}, db = {stones = {remindSoulstone = false}, alerts = {enabled = false}}})
     state.clear()
     state.emit("PLAYER_REGEN_ENABLED")
     equal(#state.messages, 1)
-    contains(state.last(), "no Healthstone")
+    contains(state.last(), "No Healthstone")
     local novice = fixture()
-    novice.clear()
+    local before = #novice.wtf.AlertHistory()
     novice.emit("PLAYER_REGEN_ENABLED")
-    equal(#novice.messages, 0, "no rank known yet")
+    for index = before + 1, #novice.wtf.AlertHistory() do
+        equal(novice.wtf.AlertHistory()[index].key:find("^stones:"), nil, "no rank known yet")
+    end
 end)
 
 -- Announce ---------------------------------------------------------------------
@@ -5200,8 +5203,8 @@ test("a size change in combat waits; Reset size restores the theme's own sizes",
         if heading.buttonText == "Reset size" then reset = heading end
     end
     reset.buttonClick()
-    equal(pinnedRow(state, "target").height, 30)
-    equal(state.wtf.db.tracker.sizes.compact.iconSize, 22)
+    equal(pinnedRow(state, "target").height, 28, "Grimoire's default: 20")
+    equal(state.wtf.db.tracker.sizes.compact.iconSize, 20)
 end)
 test("tracker names stay on one line in their room, and rows never grow from a long name", function()
     -- Found in client: long Compact names wrapped onto 2-3 lines and spilled out of the row.
@@ -5237,7 +5240,7 @@ test("tracker names stay on one line in their room, and rows never grow from a l
                 local name = rows[1].name
                 local reserve = healthText == "both" and math.floor(70 * scale / 100 + 0.5) or 0
                 if theme == "compact" and (where == "left" or where == "right") then
-                    equal(name.width, 110 - 4 - reserve, label .. ": the column beside the icons")
+                    equal(name.width, 90 - 4 - reserve, label .. ": the column beside the icons (Grimoire: 90)")
                 else
                     equal(name.width, width - 12 - reserve, label .. ": the row's whole width")
                 end
@@ -5274,7 +5277,7 @@ test("saved tracker sizes are repaired on load", function()
         bars = "broken"}}}})
     local sizes = state.wtf.db.tracker.sizes
     equal(sizes.compact.iconSize, 40)
-    equal(sizes.compact.nameWidth, 110)
+    equal(sizes.compact.nameWidth, 90, "Grimoire's default")
     equal(sizes.compact.namePosition, "left")
     equal(sizes.bars.barWidth, 290)
     equal(sizes.bars.namePosition, "above")
@@ -5660,9 +5663,10 @@ test("the settings page has a module switch and a Soul Shards subpage", function
     equal(state.categories.Announce, nil, "Grimoire: no Announce page")
     equal(state.categories.Control.parent, main)
     equal(state.categories.DoTs.parent, main)
-    for _, gone in ipairs({"Shield", "Cooldown Chimes", "Alerts", "Demon Armor"}) do
+    for _, gone in ipairs({"Shield", "Cooldown Chimes", "Demon Armor"}) do
         equal(state.categories[gone], nil, "no page pointing to another AddOn: " .. gone)
     end
+    equal(state.categories.Alerts.parent, main, "Grimoire's own Alerts page")
     equal(page.initializers[1].setting.variable, "GRIMOIRE_SHARDS_AUTO_LIMIT")
     equal(page.initializers[2].setting.variable, "GRIMOIRE_SHARDS_LIMIT")
     equal(page.initializers[3].setting.variable, "GRIMOIRE_SHARDS_REPORT")
@@ -6776,6 +6780,398 @@ end)
 local failed = 0
 -- Grimoire ---------------------------------------------------------------------
 
+local function alertsFrom(state, prefix, before)
+    local lines = {}
+    local history = state.wtf.AlertHistory()
+    for index = (before or 0) + 1, #history do
+        if not prefix or history[index].key:find(prefix, 1, true) == 1 then
+            lines[#lines + 1] = history[index]
+        end
+    end
+    return lines
+end
+
+test("alerts: a line shows in the window, once per throttle, and goes to chat only when asked", function()
+    local state = fixture()
+    state.clear()
+    local before = #state.wtf.AlertHistory()
+    equal(state.wtf.Alert("k", "Hello.", "warn"), true)
+    equal(state.wtf.Alert("k", "Hello.", "warn"), false, "throttled")
+    equal(#alertsFrom(state, "k", before), 1)
+    equal(#state.messages, 0, "not in chat")
+    state.now = state.now + 11
+    equal(state.wtf.Alert("k", "Hello.", "warn"), true, "after the throttle")
+    local chat = fixture({db = {alerts = {chat = true}}})
+    chat.clear()
+    chat.wtf.Alert("k", "Both.", "info")
+    equal(chat.last(), "Grimoire: Both.")
+    local off = fixture({db = {alerts = {enabled = false}}})
+    off.clear()
+    off.wtf.Alert("k", "Chat only.", "danger")
+    equal(off.last(), "Grimoire: Chat only.")
+    equal(off.env.GrimoireAlerts.shown, false, "the window stays hidden")
+end)
+
+test("alerts: /grim test shows one line of each kind with a sound; sounds can be turned off", function()
+    local state = fixture()
+    local before = #state.wtf.AlertHistory()
+    state.slash("test")
+    local lines = alertsFrom(state, "test:", before)
+    equal(#lines, 3)
+    equal(lines[1].level, "info")
+    equal(lines[2].level, "warn")
+    equal(lines[3].level, "danger")
+    equal(state.sounds[#state.sounds].kit, 8959, "the raid warning")
+    state.slash("test")
+    equal(#alertsFrom(state, "test:", before), 6, "/grim test is never throttled")
+    local quiet = fixture({db = {alerts = {sounds = false}}})
+    quiet.slash("test")
+    equal(#quiet.sounds, 0)
+end)
+
+test("alerts: the window takes no mouse while locked, shows samples unlocked, and is repaired on load", function()
+    local state = fixture()
+    local holder = state.env.GrimoireAlerts
+    equal(holder.mouseDisabled, true, "never blocks clicks while locked")
+    state.slash("unlock")
+    equal(holder.mouseDisabled, false, "draggable while unlocked")
+    state.slash("lock")
+    local repaired = fixture({db = {alerts = {hold = 99, fade = "x", lines = 0, scale = 7}}})
+    local alerts = repaired.wtf.db.alerts
+    equal(alerts.hold, 30)
+    equal(alerts.fade, 4)
+    equal(alerts.lines, 2)
+    equal(alerts.scale, 50)
+    equal(alerts.enabled, true)
+    equal(alerts.chat, false)
+end)
+
+local function reminderFixture(extra)
+    local options = {spellbook = {{spellID = 687, name = "Demon Skin"}, {spellID = 688, name = "Summon Imp"},
+        {spellID = 697, name = "Summon Voidwalker"}}}
+    for key, value in pairs(extra or {}) do options[key] = value end
+    local state = fixture(options)
+    state.now = state.now + 11
+    state.runTimers()
+    return state
+end
+
+-- Reminders refresh a moment after an event (bursts), then out of combat.
+local function settle(state)
+    state.now = state.now + 1
+    state.runTimers()
+end
+
+test("reminders: a missing Demon Skin shows its icon and a line; a click casts it", function()
+    local state = reminderFixture()
+    local button = state.env.GrimoireReminderArmor
+    equal(button.shown, true)
+    equal(button.attributes.type, "spell")
+    equal(button.attributes.spell, "Demon Skin")
+    local lines = alertsFrom(state, "armor")
+    equal(lines[#lines].text, "Demon Skin missing. Click the icon.")
+    -- Cast and up: the icon goes, and a line comes a minute before it ends.
+    state.buffs = {["Demon Skin"] = {name = "Demon Skin", spellId = 687, expirationTime = state.now + 600}}
+    state.emit("UNIT_AURA", "player")
+    settle(state)
+    equal(button.shown, false)
+    state.combat = true
+    state.now = state.now + 540
+    state.runTimers()
+    lines = alertsFrom(state, "armor:ending")
+    equal(lines[#lines].text, "Demon Skin ends in 1 min.")
+end)
+
+test("reminders: no lines in the first seconds after login, while the demon and buffs load", function()
+    local state = fixture({spellbook = {{spellID = 687, name = "Demon Skin"}, {spellID = 688, name = "Summon Imp"}}})
+    state.now = state.now + 1
+    state.runTimers()
+    equal(state.env.GrimoireReminderArmor.shown, true, "the icon already shows")
+    equal(#alertsFrom(state, "armor"), 0)
+    equal(#alertsFrom(state, "demon"), 0)
+    state.now = state.now + 10
+    state.runTimers()
+    state.now = state.now + 1
+    state.runTimers()
+    equal(#alertsFrom(state, "armor"), 1, "after the quiet time")
+    equal(#alertsFrom(state, "demon"), 1)
+end)
+
+test("reminders: Demon Armor wins over Demon Skin, and the reminder can be turned off", function()
+    local state = reminderFixture({spellbook = {{spellID = 687, name = "Demon Skin"}, {spellID = 706, name = "Demon Armor"}}})
+    equal(state.env.GrimoireReminderArmor.attributes.spell, "Demon Armor")
+    local off = reminderFixture({db = {reminders = {armor = false}}})
+    equal(off.env.GrimoireReminderArmor.shown, false)
+    equal(#alertsFrom(off, "armor"), 0)
+end)
+
+test("reminders: the demon icon follows the game's pet driver and summons your last demon", function()
+    local state = reminderFixture()
+    local button = state.env.GrimoireReminderDemon
+    equal(state.drivers[button], "[mounted] hide; [nopet] show; [@pet,dead] show; hide")
+    equal(button.attributes.spell, "Summon Imp", "the Imp before any summon")
+    local lines = alertsFrom(state, "demon")
+    equal(lines[#lines].text, "No demon out. Click the icon to summon.")
+    state.emit("UNIT_SPELLCAST_SUCCEEDED", "player", "cast-vw", 697)
+    settle(state)
+    equal(state.wtf.db.reminders.lastDemon, "Summon Voidwalker")
+    equal(button.attributes.spell, "Summon Voidwalker")
+    local none = reminderFixture({spellbook = {{spellID = 687, name = "Demon Skin"}}})
+    equal(none.drivers[none.env.GrimoireReminderDemon], "hide", "no summon known: no icon")
+end)
+
+test("reminders: icons change only out of combat", function()
+    local state = reminderFixture()
+    state.combat = true
+    state.buffs = {["Demon Skin"] = {name = "Demon Skin", spellId = 687, expirationTime = state.now + 600}}
+    state.emit("UNIT_AURA", "player")
+    settle(state)
+    equal(state.env.GrimoireReminderArmor.shown, true, "no change in combat")
+    state.combat = false
+    state.emit("PLAYER_REGEN_ENABLED")
+    settle(state)
+    equal(state.env.GrimoireReminderArmor.shown, false, "after combat")
+end)
+
+local function threatFixture(extra)
+    local state = trackerFixture(extra)
+    state.threat = {}
+    state.env.UnitThreatSituation = function(_, unit)
+        local data = state.units[unit]
+        return data and state.threat[data.guid]
+    end
+    return state
+end
+
+test("threat: a mob your demon held warns as you pass it, and again when it turns to you", function()
+    local state = threatFixture()
+    state.combat = true
+    local before = #state.wtf.AlertHistory()
+    state.threat["Creature-1"] = 0
+    state.emit("UNIT_THREAT_LIST_UPDATE", "target")
+    equal(#alertsFrom(state, "threat", before), 0, "your Voidwalker holds it")
+    state.threat["Creature-1"] = 1
+    state.emit("UNIT_THREAT_LIST_UPDATE", "target")
+    local lines = alertsFrom(state, "threat", before)
+    equal(lines[1].text, "Careful: about to pull Boar.")
+    equal(lines[1].level, "warn")
+    equal(state.sounds[#state.sounds].kit, 847)
+    state.threat["Creature-1"] = 3
+    state.emit("UNIT_THREAT_SITUATION_UPDATE", "player")
+    lines = alertsFrom(state, "threat", before)
+    equal(lines[#lines].text, "Aggro! Boar is on you.")
+    equal(lines[#lines].level, "danger")
+    equal(state.sounds[#state.sounds].kit, 8959)
+end)
+
+test("threat: a mob you pull yourself never warns; a secret answer is skipped", function()
+    local state = threatFixture()
+    state.combat = true
+    local before = #state.wtf.AlertHistory()
+    state.threat["Creature-2"] = 3
+    state.emit("UNIT_THREAT_LIST_UPDATE", "nameplate4")
+    equal(#alertsFrom(state, "threat", before), 0, "solo pull")
+    local hidden = setmetatable({}, {})
+    state.secrets[hidden] = true
+    state.threat["Creature-1"] = hidden
+    state.emit("UNIT_THREAT_LIST_UPDATE", "target")
+    equal(#alertsFrom(state, "threat", before), 0)
+    local off = threatFixture({db = {threat = {enabled = false}}})
+    off.combat = true
+    off.threat["Creature-1"] = 0
+    off.emit("UNIT_THREAT_LIST_UPDATE", "target")
+    off.threat["Creature-1"] = 3
+    off.emit("UNIT_THREAT_LIST_UPDATE", "target")
+    equal(#alertsFrom(off, "threat"), 0, "switched off")
+end)
+
+test("pet: your demon dying in combat warns; Sacrifice, a new summon, or leaving combat do not", function()
+    local state = fixture()
+    state.units.pet = {name = "Laztal", guid = "Pet-1"}
+    state.emit("UNIT_PET", "player")
+    state.combat = true
+    local before = #state.wtf.AlertHistory()
+    state.units.pet = nil
+    state.emit("UNIT_PET", "player")
+    local lines = alertsFrom(state, "pet:", before)
+    equal(lines[1].text, "Your demon died.")
+    equal(lines[1].level, "danger")
+    -- Sacrifice: the Voidwalker's own cast.
+    state.now = state.now + 10
+    state.units.pet = {name = "Vw", guid = "Pet-2"}
+    state.emit("UNIT_PET", "player")
+    state.emit("UNIT_SPELLCAST_SUCCEEDED", "pet", "cast-sac", 7812)
+    state.units.pet = nil
+    state.emit("UNIT_PET", "player")
+    equal(#alertsFrom(state, "pet:", before), 1, "no line for Sacrifice")
+    -- A new summon replaces the demon.
+    state.now = state.now + 10
+    state.units.pet = {name = "Imp", guid = "Pet-3"}
+    state.emit("UNIT_PET", "player")
+    state.emit("UNIT_SPELLCAST_SUCCEEDED", "player", "cast-sum", 697)
+    state.units.pet = nil
+    state.emit("UNIT_PET", "player")
+    equal(#alertsFrom(state, "pet:", before), 1, "no line for a new summon")
+    -- Out of combat a demon leaving is a dismiss.
+    state.combat = false
+    state.now = state.now + 10
+    state.units.pet = {name = "Imp", guid = "Pet-4"}
+    state.emit("UNIT_PET", "player")
+    state.units.pet = nil
+    state.emit("UNIT_PET", "player")
+    equal(#alertsFrom(state, "pet:", before), 1)
+end)
+
+test("pet: Enslave Demon breaking warns, also out of combat", function()
+    local state = fixture()
+    state.emit("UNIT_SPELLCAST_SUCCEEDED", "player", "cast-ens", 1098)
+    state.units.pet = {name = "Felguard", guid = "Pet-9"}
+    state.emit("UNIT_PET", "player")
+    state.now = state.now + 60
+    local before = #state.wtf.AlertHistory()
+    state.units.pet = nil
+    state.emit("UNIT_PET", "player")
+    local lines = alertsFrom(state, "pet:", before)
+    equal(lines[1].text, "Enslave Demon broke!")
+end)
+
+test("pet: low health warns once where it reads, and never from a secret answer", function()
+    local era = fixture({era = true})
+    era.units.pet = {name = "Vw", guid = "Pet-1", health = 300, maxHealth = 1000}
+    era.emit("UNIT_PET", "player")
+    era.combat = true
+    era.emit("UNIT_HEALTH", "pet")
+    local lines = alertsFrom(era, "pet:low")
+    equal(lines[1].text, "Demon low: 30% health.")
+    era.emit("UNIT_HEALTH", "pet")
+    equal(#alertsFrom(era, "pet:low"), 1, "once per dip")
+    local forever = fixture()
+    forever.units.pet = {name = "Vw", guid = "Pet-1", health = 300, maxHealth = 1000}
+    forever.emit("UNIT_PET", "player")
+    forever.combat = true
+    forever.emit("UNIT_HEALTH", "pet")
+    equal(#alertsFrom(forever, "pet:low"), 0, "secret in combat: nothing")
+end)
+
+test("Nightfall: the game plays the Imp chirp for Shadow Trance; the icon's slot watches it", function()
+    local state = fixture()
+    local found
+    for _, sound in pairs(state.auraSounds or {}) do
+        if sound.info.spellID == 17941 then found = sound end
+    end
+    equal(found ~= nil, true, "registered at login")
+    equal(found.info.soundFileID, 639156)
+    equal(found.info.unitToken, "player")
+    local container = state.env.GrimoireNightfall.children[#state.env.GrimoireNightfall.children]
+    local slot
+    for _, child in ipairs(state.env.GrimoireNightfall.children) do
+        if child.slots then slot = child.slots[1] end
+    end
+    equal(slot.key, "nightfall")
+    equal(slot.ids[17941], true)
+    -- Sounds off: unregistered.
+    state.settings.GRIMOIRE_PROCS_SOUND:SetValue(false)
+    local left = 0
+    for _ in pairs(state.auraSounds) do left = left + 1 end
+    equal(left, 0)
+end)
+
+test("Nightfall: a Forever buff ID is learned out of combat; an encounter delays the change", function()
+    local state = fixture()
+    state.buffs = {["Shadow Trance"] = {name = "Shadow Trance", spellId = 99001}}
+    state.emit("UNIT_AURA", "player")
+    equal(state.wtf.db.procs.learned, 99001)
+    local ids = {}
+    for _, sound in pairs(state.auraSounds) do ids[sound.info.spellID] = true end
+    equal(ids[99001], true, "the learned ID gets the sound too")
+    state.encounter = true
+    state.settings.GRIMOIRE_PROCS_SOUND:SetValue(false)
+    local count = 0
+    for _ in pairs(state.auraSounds) do count = count + 1 end
+    equal(count > 0, true, "no change during the encounter")
+    state.encounter = false
+    state.emit("ENCOUNTER_END")
+    count = 0
+    for _ in pairs(state.auraSounds) do count = count + 1 end
+    equal(count, 0, "applied once it ends")
+end)
+
+test("cooldowns: a line just before Death Coil is ready, timed from your cast, also in combat", function()
+    local state = fixture()
+    state.combat = true
+    state.emit("UNIT_SPELLCAST_SUCCEEDED", "player", "cast-dc", 6789)
+    state.now = state.now + 119
+    state.runTimers()
+    equal(#alertsFrom(state, "cooldown:"), 0, "not yet")
+    state.now = state.now + 0.6
+    state.runTimers()
+    local lines = alertsFrom(state, "cooldown:")
+    equal(lines[1].text, "Death Coil ready.")
+    equal(state.sounds[#state.sounds].kit, 73281, "talent ready")
+end)
+
+test("cooldowns: the real length is read out of combat and saved; off spells stay quiet", function()
+    local state = fixture()
+    state.cooldowns[6789] = {start = state.now, duration = 90}
+    state.emit("UNIT_SPELLCAST_SUCCEEDED", "player", "cast-dc", 6789)
+    state.now = state.now + 0.1
+    state.runTimers()
+    equal(state.wtf.db.cooldowns.learned.deathcoil, 90)
+    state.now = state.now + 89.5
+    state.runTimers()
+    equal(alertsFrom(state, "cooldown:")[1].text, "Death Coil ready.")
+    state.emit("UNIT_SPELLCAST_SUCCEEDED", "player", "cast-sb", 17877)
+    state.now = state.now + 20
+    state.runTimers()
+    equal(#alertsFrom(state, "cooldown:shadowburn"), 0, "Shadowburn is off by default")
+end)
+
+test("shield: Grimoire hosts the shield display, locked with its other frames", function()
+    local state = fixture()
+    equal(state.wtf.ShieldDisplay.IsOwner(), true)
+    equal(state.wtf.ShieldDisplay.OwnerAddOn(), "Grimoire")
+    equal(type(state.wtf.db.shield), "table")
+    equal(state.wtf.db.shield.locked, true)
+    state.slash("unlock")
+    equal(state.wtf.db.shield.locked, false)
+    state.slash("lock")
+    equal(state.wtf.db.shield.locked, true)
+end)
+
+test("tracker: Compact and smaller by default; WTF's untouched defaults move once, a choice stays", function()
+    local fresh = fixture({freshDB = true})
+    equal(fresh.wtf.db.tracker.theme, "compact")
+    equal(fresh.wtf.db.tracker.sizes.compact.iconSize, 20)
+    equal(fresh.wtf.db.tracker.sizes.compact.nameWidth, 90)
+    local upgraded = fixture({oldSave = true, db = {tracker = {theme = "bars",
+        sizes = {bars = {barWidth = 290, lineHeight = 16, textScale = 100}, compact = {iconSize = 22, nameWidth = 110}}}}})
+    equal(upgraded.wtf.db.tracker.theme, "compact")
+    equal(upgraded.wtf.db.tracker.sizes.compact.iconSize, 20)
+    local chosen = fixture({oldSave = true, db = {tracker = {theme = "bars", sizes = {bars = {barWidth = 200}}}}})
+    equal(chosen.wtf.db.tracker.theme, "bars", "a changed Bars size means Bars was chosen")
+    equal(chosen.wtf.db.tracker.sizes.bars.barWidth, 200)
+    local again = fixture({oldSave = true, db = {tracker = {theme = "bars", layoutVersion = 2}}})
+    equal(again.wtf.db.tracker.theme, "bars", "once only")
+end)
+
+test("debug_checks answers in and out of combat without errors", function()
+    local state = controlFixture()
+    state.units.pet = {name = "Vw", guid = "Pet-1"}
+    state.env.UnitThreatSituation = function() return 1 end
+    state.env.C_Spell.GetSpellInfo = function() return {castTime = 2500} end
+    castAt(state, FEAR, "nameplate3")
+    for _, combat in ipairs({false, true}) do
+        state.combat = combat
+        state.clear()
+        state.slash("debug_checks")
+        local text = table.concat(state.messages, "\n")
+        equal(text:find("failed", 1, true), nil, text)
+        contains(text, "threat target status=1")
+        contains(text, "shadowBoltCastTime=2500")
+        contains(text, "combatLogText seen=")
+    end
+end)
+
 test("Grimoire never sends chat, whispers, emotes, or addon messages, in a group or alone", function()
     for _, group in ipairs({"party", "raid", false}) do
         local state = controlFixture({group = group or nil, known = {[FEAR] = true, [BANISH] = true,
@@ -6799,6 +7195,19 @@ test("Grimoire never sends chat, whispers, emotes, or addon messages, in a group
         banishAt(state, "nameplate4")
         castAt(state, ENSLAVE, "nameplate4")
         castAt(state, HOWL, "nameplate3")
+        -- Grimoire 0.2: alerts, a demon dying, a cooldown, test lines.
+        state.combat = true
+        state.units.pet = {name = "Vw", guid = "Pet-1"}
+        state.emit("UNIT_PET", "player")
+        state.units.pet = nil
+        state.emit("UNIT_PET", "player")
+        state.emit("UNIT_SPELLCAST_SUCCEEDED", "player", "cast-dc", 6789)
+        state.now = state.now + 130
+        state.runTimers()
+        state.combat = false
+        state.emit("PLAYER_REGEN_ENABLED")
+        state.runTimers()
+        state.slash("test")
         state.press()
         state.click()
         state.now = state.now + 31

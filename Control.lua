@@ -19,8 +19,6 @@ local FOCUS_RED = {0.9, 0.1, 0.1}
 -- The engine's default look (WTF's Bars theme): the bar's size for its mover.
 local ROW_WIDTH, ROW_HEIGHT, ROW_GAP, ROWS = 200, 40, 4, 5
 local MARKERS_VERSION = 2
-local OLD_BANISH_MARKER = 3
-local MAX_MARKER = 8
 WTF.CONTROL_SCALE_MIN = 50
 WTF.CONTROL_SCALE_MAX = 150
 WTF.CONTROL_SCALE_STEP = 5
@@ -48,34 +46,14 @@ function WTF.SanitizeControlScale(value)
     return math.max(WTF.CONTROL_SCALE_MIN, math.min(WTF.CONTROL_SCALE_MAX, stepped))
 end
 
-local function ValidMarker(index)
-    return IsWholeNumber(index) and index >= 0 and index <= MAX_MARKER
-end
-
 -- The saved control settings, repaired; Core calls this from SanitizeDB.
 -- Saved markers of spells the Toolkit does not list (none without it) stay.
 function WTF.SanitizeControl(saved, sanitizePosition)
     saved = type(saved) == "table" and saved or {}
-    local markers = type(saved.markers) == "table" and saved.markers or {}
+    -- Grimoire: no raid markers, so none are kept (markerFor is always none).
     local clean = {enabled = saved.enabled ~= false, position = sanitizePosition(saved.position),
         scale = WTF.SanitizeControlScale(saved.scale), markers = {}, markersVersion = MARKERS_VERSION,
         plateTimers = saved.plateTimers ~= false, macros = saved.macros ~= false}
-    for key, marker in pairs(markers) do
-        if type(key) == "string" and ValidMarker(marker) then
-            clean.markers[key] = marker
-        end
-    end
-    for _, spell in ipairs(WTF.CONTROL_SPELLS) do
-        if spell.marker then
-            local marker = ValidMarker(markers[spell.key]) and markers[spell.key] or spell.marker
-            -- Banish's first default was the diamond; it moves to the moon once.
-            if (saved.markersVersion or 1) < MARKERS_VERSION and marker == OLD_BANISH_MARKER
-                and spell.key == "banish" then
-                marker = spell.marker
-            end
-            clean.markers[spell.key] = marker
-        end
-    end
     return clean
 end
 

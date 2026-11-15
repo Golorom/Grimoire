@@ -468,6 +468,11 @@ local function OnBagsChanged()
         state.settling = nil
     end
     WTF.RefreshShardCounter()
+    -- Grimoire: spending down to the low mark (the counter's red) says so.
+    if change < 0 and WTF.db.shards.counter and count <= WTF.db.shards.counterLow then
+        WTF.Alert("shards:low", count == 0 and "Out of Soul Shards." or ("Low on Soul Shards: " .. count .. " left."),
+            "warn", {throttle = 20})
+    end
     if change > 0 then
         local created = InCreationWindow()
         if created and WTF.db.shards.enabled and not state.blocked then

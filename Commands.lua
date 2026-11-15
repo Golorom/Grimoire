@@ -1,7 +1,9 @@
 local _, WTF = ...
 
-local USAGE = "Use /grim, /grim shards, /grim stones, /grim unlock, /grim lock, /grim reset, /grim reset_focus, "
-    .. "or for testing /grim debug_shards, debug_stones, debug_tracker, debug_predict, debug_control, debug_restrictions."
+local USAGE = "Use /grim, /grim test (sample alerts), /grim shards, /grim stones, /grim unlock, /grim lock, "
+    .. "/grim reset, /grim reset_focus, or for testing /grim debug_checks, debug_restrictions, debug_alerts, debug_reminders, "
+    .. "debug_threat, debug_pet, debug_procs, debug_cooldowns, debug_shield, debug_shards, debug_stones, "
+    .. "debug_tracker, debug_predict, debug_control."
 local UNAVAILABLE = "Grimoire is unavailable. Check its login message."
 
 -- Each command is one word; "" opens the settings. Handlers live in the other
@@ -23,6 +25,15 @@ local COMMANDS = {
     debug_tracker = {handler = "ReportTrackerDebug", always = true},
     debug_predict = {handler = "ReportPredictDebug"},
     debug_control = {handler = "ReportControlDebug"},
+    test = {handler = "TestAlerts"},
+    debug_checks = {handler = "ReportForeverChecks", always = true},
+    debug_alerts = {handler = "ReportAlertsDebug"},
+    debug_reminders = {handler = "ReportRemindersDebug"},
+    debug_threat = {handler = "ReportThreatDebug"},
+    debug_pet = {handler = "ReportPetDebug"},
+    debug_procs = {handler = "ReportProcsDebug"},
+    debug_cooldowns = {handler = "ReportCooldownsDebug"},
+    debug_shield = {handler = "ReportShieldDebug"},
 }
 
 function WTF.ParseCommand(message)

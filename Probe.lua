@@ -30,8 +30,31 @@ end
 -- stay readable in combat. Values are kept only as already-safe text.
 local casts = {}
 
+-- Grimoire 0.2: what the chat combat log tab gets, for /grim debug_checks:
+-- whether its lines reach addon code as text, or arrive secret.
+local logText = {seen = 0, secret = 0}
+
+local function WatchCombatLogText()
+    local frame = rawget(_G, "COMBATLOG") or rawget(_G, "ChatFrame2")
+    if type(frame) ~= "table" or type(frame.AddMessage) ~= "function" or type(hooksecurefunc) ~= "function" then
+        logText.missing = true
+        return
+    end
+    hooksecurefunc(frame, "AddMessage", function(_, text)
+        logText.seen = logText.seen + 1
+        logText.inCombat = InCombatLockdown()
+        if WTF.IsSecret(text) then
+            logText.secret = logText.secret + 1
+            logText.last = "secret"
+        elseif type(text) == "string" then
+            logText.last = text:sub(1, 60)
+        end
+    end)
+end
+
 -- Core starts this past the class gate, so a non-Warlock registers nothing.
 function WTF.InitializeProbe()
+    WatchCombatLogText()
     local castFrame = CreateFrame("Frame")
     castFrame:RegisterUnitEvent("UNIT_SPELLCAST_SENT", "player")
     castFrame:RegisterUnitEvent("UNIT_SPELLCAST_SUCCEEDED", "player")
@@ -252,6 +275,64 @@ local function ReportTargetIsFocus()
     if UnitExists("target") and UnitExists("focus") then
         Report("targetIsFocus=" .. WTF.Describe(UnitIsUnit("target", "focus")))
     end
+end
+
+-- /grim debug_checks (Grimoire 0.2): short answers to what the coming
+-- features need, out of combat and in combat. Reads and prints only.
+local SHADOW_BOLT = 686
+
+function WTF.ReportForeverChecks()
+    local function Line(text)
+        WTF.Report("debug_checks " .. text)
+    end
+    local function Try(label, check)
+        local ok, failure = pcall(check)
+        if not ok then
+            Line(label .. " failed: " .. tostring(failure))
+        end
+    end
+    Line("combat=" .. tostring(InCombatLockdown()))
+    Try("threat", function()
+        for _, unit in ipairs({"target", "nameplate1", "nameplate2"}) do
+            if UnitExists(unit) then
+                local status = type(UnitThreatSituation) == "function" and UnitThreatSituation("player", unit)
+                local tanking, detail, scaled = nil, nil, nil
+                if type(UnitDetailedThreatSituation) == "function" then
+                    tanking, detail, scaled = UnitDetailedThreatSituation("player", unit)
+                end
+                Line(string.format("threat %s status=%s detailedStatus=%s tanking=%s percent=%s", unit,
+                    WTF.Describe(status), WTF.Describe(detail), WTF.Describe(tanking), WTF.Describe(scaled)))
+            end
+        end
+    end)
+    Try("cooldown", function()
+        local id = casts.succeededID
+        if id and type(C_Spell.GetSpellCooldown) == "function" then
+            local info = C_Spell.GetSpellCooldown(id)
+            Line(string.format("cooldown spell=%s start=%s duration=%s", tostring(id),
+                WTF.Describe(info and info.startTime), WTF.Describe(info and info.duration)))
+        else
+            Line("cooldown: cast a spell first")
+        end
+    end)
+    Try("pet", function()
+        if UnitExists("pet") then
+            Line(string.format("pet health=%s max=%s dead=%s", WTF.Describe(UnitHealth("pet")),
+                WTF.Describe(UnitHealthMax("pet")), WTF.Describe(UnitIsDead("pet"))))
+        else
+            Line("pet none")
+        end
+    end)
+    Try("nightfall", function()
+        -- With Nightfall up, Shadow Bolt is instant: if its cast time reads in
+        -- combat, Grimoire could print a line for the proc too.
+        local info = type(C_Spell.GetSpellInfo) == "function" and C_Spell.GetSpellInfo(SHADOW_BOLT)
+        Line("shadowBoltCastTime=" .. WTF.Describe(type(info) == "table" and info.castTime or nil))
+    end)
+    Line(string.format("combatLogText seen=%d secret=%d missing=%s lastInCombat=%s last=%s", logText.seen,
+        logText.secret, tostring(logText.missing == true), tostring(logText.inCombat), tostring(logText.last)))
+    Line(string.format("auraSoundAPI=%s", tostring(type(C_UnitAuras) == "table"
+        and type(C_UnitAuras.AddAuraSound) == "function")))
 end
 
 function WTF.ReportRestrictions()

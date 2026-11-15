@@ -120,6 +120,11 @@ local REQUIRED_NAMESPACE = {
     "TrackerOutlineAvailable", "SetTrackerOutlineWidth",
     "RefreshTrackerPrediction",
     "ReportRestrictions", "ResetFocusWorks", "InitializeProbe", "InitializeOptions", "OpenSettings",
+    "SanitizeAlerts", "InitializeAlerts", "RefreshAlerts", "Alert", "TestAlerts", "ResetAlertsPosition",
+    "SanitizeReminders", "InitializeReminders", "RefreshReminders", "ResetRemindersPosition",
+    "SanitizeThreat", "InitializeThreat", "SanitizePet", "InitializePet",
+    "SanitizeProcs", "InitializeProcs", "RefreshProcs", "ResetProcsPosition",
+    "SanitizeCooldowns", "InitializeCooldowns",
 }
 
 local function CheckInstalledFiles()
@@ -246,6 +251,7 @@ end
 -- Defaults that changed (author-approved): once, a slot still on its old
 -- default moves to the new one; a color the user picked stays, also later.
 local OLD_DEFAULT_COLORS = {curse = "ff4d8cff", corruption = "ff9e40d9"}
+local TRACKER_LAYOUT_VERSION = 2
 local COLORS_VERSION = 2
 
 function WTF.SanitizeColor(value, default)
@@ -327,8 +333,8 @@ WTF.DEFAULT_PLATE_DOTS_OPACITY = 100
 -- few places, so every layout is a tested one.
 WTF.TRACKER_SIZE_SPECS = {
     compact = {
-        {key = "iconSize", label = "Icon size", min = 16, max = 40, step = 1, default = 22},
-        {key = "nameWidth", label = "Name width", min = 60, max = 200, step = 5, default = 110,
+        {key = "iconSize", label = "Icon size", min = 16, max = 40, step = 1, default = 20},
+        {key = "nameWidth", label = "Name width", min = 60, max = 200, step = 5, default = 90,
             tooltip = "The room the name has beside the icons (name Left or Right): the row grows or shrinks with "
                 .. "it. A longer name is cut with \"...\". Above or below the icons, the name spans the row."},
         {key = "textScale", label = "Text size", min = 50, max = 200, step = 5, default = 100, percent = true},
@@ -476,6 +482,19 @@ function WTF.SanitizeDB(db)
     for theme in pairs(WTF.TRACKER_SIZE_SPECS) do
         db.tracker.sizes[theme] = WTF.SanitizeTrackerSizes(theme, sizes[theme])
     end
+    -- Grimoire 0.2: Compact and smaller by default (the Bars theme took too
+    -- much room). Once, a theme and sizes still on WTF's defaults move to the
+    -- new ones; anything you changed stays.
+    if (tracker.layoutVersion or 1) < TRACKER_LAYOUT_VERSION then
+        local bars, compact = db.tracker.sizes.bars, db.tracker.sizes.compact
+        if db.tracker.theme == "bars" and bars.barWidth == 290 and bars.lineHeight == 16 and bars.textScale == 100 then
+            db.tracker.theme = "compact"
+        end
+        if compact.iconSize == 22 and compact.nameWidth == 110 and compact.textScale == 100 then
+            compact.iconSize, compact.nameWidth = 20, 90
+        end
+    end
+    db.tracker.layoutVersion = TRACKER_LAYOUT_VERSION
     local panelOpacity = type(tracker.panelOpacity) == "table" and tracker.panelOpacity or {}
     for _, panel in ipairs(WTF.TRACKER_PANELS) do
         db.tracker.panelOpacity[panel.key] = WTF.SanitizeWhole(panelOpacity[panel.key], WTF.PANEL_OPACITY_MIN,
@@ -528,10 +547,24 @@ function WTF.SanitizeDB(db)
     if WTF.SanitizeControl then
         db.control = WTF.SanitizeControl(db.control, SanitizePosition)
     end
+    -- Grimoire 0.2: the alert window, reminders, threat, pet, Nightfall,
+    -- cooldown alerts, and the shield display (each file repairs its own).
+    if WTF.SanitizeAlerts then
+        db.alerts = WTF.SanitizeAlerts(db.alerts, SanitizePosition)
+        db.reminders = WTF.SanitizeReminders(db.reminders, SanitizePosition)
+        db.threat = WTF.SanitizeThreat(db.threat)
+        db.pet = WTF.SanitizePet(db.pet)
+        db.procs = WTF.SanitizeProcs(db.procs, SanitizePosition)
+        db.cooldowns = WTF.SanitizeCooldowns(db.cooldowns)
+        db.shield = WTF.ShieldDisplay.Sanitize(db.shield)
+    end
     db.locked = db.locked ~= false
     db.grid = db.grid ~= false
     db.stones.locked = db.locked
     db.tracker.locked = db.locked
+    if db.shield then
+        db.shield.locked = db.locked
+    end
     db.tracker.placeholders = not db.locked
     db.shards.counterLocked = db.locked
     return db
@@ -686,6 +719,9 @@ local function SetLockFlags(locked)
     WTF.db.tracker.locked = locked
     WTF.db.tracker.placeholders = not locked
     WTF.db.shards.counterLocked = locked
+    if WTF.db.shield then
+        WTF.db.shield.locked = locked
+    end
 end
 
 function WTF.SetFramesLocked(locked, quiet)
@@ -694,6 +730,10 @@ function WTF.SetFramesLocked(locked, quiet)
     WTF.RefreshStonesMover()
     WTF.RefreshShardCounter()
     WTF.RefreshControl()
+    WTF.RefreshAlerts()
+    WTF.RefreshReminders()
+    WTF.RefreshProcs()
+    WTF.ShieldDisplay.Refresh()
     WTF.RefreshGrid()
     if quiet then
         return
@@ -704,6 +744,10 @@ function WTF.SetFramesLocked(locked, quiet)
         WTF.Report("All Grimoire frames unlocked: drag them where you want (Shift-drag moves a snapped group), "
             .. "then type /grim lock.")
     end
+end
+
+function WTF.ReportShieldDebug()
+    WTF.ShieldDisplay.ReportDebug(WTF.Report)
 end
 
 function WTF.Unlock()
@@ -753,6 +797,8 @@ local function UseShared()
     end
     WTF.AuraEngineKind = shared.AuraEngineKind
     WTF.AURA_ENGINE_MISSING = shared.AURA_ENGINE_MISSING
+    -- For the shield display (Shield.lua reads them from the namespace).
+    WTF.CreateAuraContainer = shared.CreateAuraContainer
 end
 
 -- /grim reset: the Stones bar, the DoT tracker, the shard counter, and the Control bar back to their default places.
@@ -761,6 +807,10 @@ function WTF.ResetPositions()
     WTF.ResetStonesPosition()
     WTF.ResetTrackerPosition()
     WTF.ResetControlPosition()
+    WTF.ResetAlertsPosition()
+    WTF.ResetRemindersPosition()
+    WTF.ResetProcsPosition()
+    WTF.ShieldDisplay.ResetPosition()
     if InCombatLockdown() then
         WTF.Report("Grimoire frames move back to their default places after combat.")
     end
@@ -831,6 +881,8 @@ events:SetScript("OnEvent", function(self, event, loadedName)
     -- so startup never depends on event handler order.
     UseShared()
     InstallInputHooks()
+    -- The alert window first: the other modules write to it.
+    WTF.InitializeAlerts()
     WTF.InitializeShards()
     WTF.InitializeStones()
     if WTF.shared then
@@ -839,7 +891,14 @@ events:SetScript("OnEvent", function(self, event, loadedName)
         WTF.InitializeTracker()
         WTF.InitializeControl()
         WTF.InitializePlateDots()
+        WTF.InitializeReminders()
+        WTF.InitializeProcs()
     end
+    WTF.InitializeThreat()
+    WTF.InitializePet()
+    WTF.InitializeCooldowns()
+    WTF.ShieldDisplay.Initialize({settings = function() return WTF.db.shield end, report = WTF.Report,
+        unlockHint = "Drag to move. /grim lock when done", missingSounds = function() end})
     WTF.InitializeProbe()
     WTF.InitializeOptions()
     WTF.RefreshGrid()
