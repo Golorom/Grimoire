@@ -6812,6 +6812,31 @@ test("alerts: a line shows in the window, once per throttle, and goes to chat on
     equal(off.env.GrimoireAlerts.shown, false, "the window stays hidden")
 end)
 
+test("alerts: a dark panel, 25% opaque, comes with a line and fades with the newest one", function()
+    local state = fixture()
+    local panel = state.env.GrimoireAlertsPanel
+    equal(panel.shown, false, "nothing to show yet")
+    state.wtf.Alert("p", "Hello.", "info")
+    equal(panel.shown, true)
+    equal(panel.alpha, 0.25)
+    local function run(seconds)
+        state.now = state.now + seconds
+        if panel.shown and panel.scripts.OnUpdate then panel.scripts.OnUpdate(panel, seconds) end
+    end
+    run(7)
+    equal(panel.alpha, 0.25, "holding")
+    run(3)
+    equal(math.floor(panel.alpha * 1000 + 0.5), 125, "half way through the fade")
+    run(3)
+    equal(panel.alpha, 0)
+    equal(panel.shown, false, "gone with the line")
+    local none = fixture({db = {alerts = {background = 0}}})
+    none.wtf.Alert("p", "Text alone.", "info")
+    equal(none.env.GrimoireAlertsPanel.shown, false)
+    local repaired = fixture({db = {alerts = {background = 300}}})
+    equal(repaired.wtf.db.alerts.background, 100)
+end)
+
 test("alerts: /grim test shows one line of each kind with a sound; sounds can be turned off", function()
     local state = fixture()
     local before = #state.wtf.AlertHistory()

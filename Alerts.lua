@@ -3,6 +3,8 @@ local _, WTF = ...
 -- Grimoire: the alert window. Short warnings for you only, in a slim window
 -- of their own (not a chat tab, so any chat AddOn or none works): a line
 -- shows the moment it comes, stays for the hold time, then fades out slowly.
+-- Lines are left-aligned on a dark panel (25% opaque by default, a setting)
+-- that appears with a line and fades with the newest one.
 -- Nothing is ever sent to other players. The window takes no mouse while
 -- locked, so it never blocks clicks on the world; unlocked, it shows sample
 -- lines and an outline to drag.
@@ -14,7 +16,8 @@ local _, WTF = ...
 -- sounds are on. With the window switched off, a line goes to chat instead;
 -- with "Also print in chat" on, to both.
 
-local HOLDER_WIDTH, LINE_HEIGHT, HOLDER_PADDING = 320, 22, 6
+local HOLDER_WIDTH, LINE_HEIGHT, HOLDER_PADDING = 340, 22, 12
+local TEXT_INSET_X, TEXT_INSET_Y = 10, 6
 local DEFAULT_POINT = {"CENTER", "CENTER", 0, 210}
 local THROTTLE = 10
 local HISTORY = 20
@@ -28,9 +31,11 @@ local SAMPLES = {
 WTF.ALERT_HOLD_MIN, WTF.ALERT_HOLD_MAX, WTF.DEFAULT_ALERT_HOLD = 2, 30, 8
 WTF.ALERT_FADE_MIN, WTF.ALERT_FADE_MAX, WTF.DEFAULT_ALERT_FADE = 1, 10, 4
 WTF.ALERT_LINES_MIN, WTF.ALERT_LINES_MAX, WTF.DEFAULT_ALERT_LINES = 2, 8, 4
+-- The panel's opacity in percent: 25 is 75% transparent.
+WTF.ALERT_BACKGROUND_MIN, WTF.ALERT_BACKGROUND_MAX, WTF.DEFAULT_ALERT_BACKGROUND = 0, 100, 25
 
-local alerts = {last = {}, history = {}}
-local holder, log
+local alerts = {last = {}, history = {}, lastAt = nil}
+local holder, log, panel
 
 -- The saved alert settings, repaired; Core calls this from SanitizeDB.
 function WTF.SanitizeAlerts(saved, sanitizePosition)
@@ -44,6 +49,8 @@ function WTF.SanitizeAlerts(saved, sanitizePosition)
         hold = WTF.SanitizeWhole(saved.hold, WTF.ALERT_HOLD_MIN, WTF.ALERT_HOLD_MAX, WTF.DEFAULT_ALERT_HOLD),
         fade = WTF.SanitizeWhole(saved.fade, WTF.ALERT_FADE_MIN, WTF.ALERT_FADE_MAX, WTF.DEFAULT_ALERT_FADE),
         lines = WTF.SanitizeWhole(saved.lines, WTF.ALERT_LINES_MIN, WTF.ALERT_LINES_MAX, WTF.DEFAULT_ALERT_LINES),
+        background = WTF.SanitizeWhole(saved.background, WTF.ALERT_BACKGROUND_MIN, WTF.ALERT_BACKGROUND_MAX,
+            WTF.DEFAULT_ALERT_BACKGROUND),
     }
 end
 
@@ -88,9 +95,51 @@ local function ApplyLook()
     holder:SetScale(settings.scale / 100)
 end
 
+-- The panel: full opacity while the newest line holds, then down with it.
+-- Its OnUpdate is set only while it fades.
+local function PanelAlpha()
+    local opacity = WTF.db.alerts.background / 100
+    if not WTF.db.locked then
+        return opacity
+    end
+    if not alerts.lastAt then
+        return 0
+    end
+    local settings = WTF.db.alerts
+    local left = alerts.lastAt + settings.hold + settings.fade - GetTime()
+    if left <= 0 then
+        return 0
+    end
+    return opacity * math.min(1, left / settings.fade)
+end
+
+local function UpdatePanel(self)
+    local alpha = PanelAlpha()
+    self:SetAlpha(alpha)
+    if alpha <= 0 then
+        self:Hide()
+        self:SetScript("OnUpdate", nil)
+    end
+end
+
+local function ShowPanel()
+    if WTF.db.alerts.background <= 0 then
+        panel:Hide()
+        panel:SetScript("OnUpdate", nil)
+        return
+    end
+    panel:Show()
+    UpdatePanel(panel)
+    if panel:IsShown() and WTF.db.locked then
+        panel:SetScript("OnUpdate", UpdatePanel)
+    end
+end
+
 local function AddLine(text, level)
     local color = COLORS[level] or COLORS.info
     log:AddMessage(text, color[1], color[2], color[3])
+    alerts.lastAt = GetTime()
+    ShowPanel()
 end
 
 function WTF.RefreshAlerts()
@@ -109,6 +158,12 @@ function WTF.RefreshAlerts()
         end
     elseif not unlocked then
         alerts.samples = false
+    end
+    if unlocked or (alerts.lastAt and PanelAlpha() > 0) then
+        ShowPanel()
+    else
+        panel:Hide()
+        panel:SetScript("OnUpdate", nil)
     end
 end
 
@@ -202,12 +257,24 @@ function WTF.InitializeAlerts()
     holder:SetScript("OnDragStop", WTF.EndDrag)
     WTF.RegisterMovable(holder, function(position) WTF.db.alerts.position = position end)
     holder.mover = WTF.CreateMover(holder)
+    panel = CreateFrame("Frame", "GrimoireAlertsPanel", holder, "BackdropTemplate")
+    panel:SetAllPoints()
+    panel:SetBackdrop({bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
+        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border", edgeSize = 12,
+        insets = {left = 3, right = 3, top = 3, bottom = 3}})
+    panel:SetBackdropColor(0, 0, 0, 1)
+    panel:SetBackdropBorderColor(0.6, 0.6, 0.6, 1)
+    panel:EnableMouse(false)
+    panel:Hide()
+    holder.panel = panel
     log = CreateFrame("ScrollingMessageFrame", "GrimoireAlertsLog", holder)
-    log:SetAllPoints()
+    log:SetPoint("TOPLEFT", holder, "TOPLEFT", TEXT_INSET_X, -TEXT_INSET_Y)
+    log:SetPoint("BOTTOMRIGHT", holder, "BOTTOMRIGHT", -TEXT_INSET_X, TEXT_INSET_Y)
     log:SetFontObject(GameFontNormalLarge)
-    log:SetJustifyH("CENTER")
+    log:SetJustifyH("LEFT")
     log:SetFading(true)
     log:EnableMouse(false)
+    log:SetFrameLevel(panel:GetFrameLevel() + 2)
     holder.log = log
     WTF.alertsFrame = holder
     holder:SetScale(WTF.db.alerts.scale / 100)

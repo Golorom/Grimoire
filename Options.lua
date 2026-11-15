@@ -970,6 +970,14 @@ local function AddAlertsPage(parent)
                 WTF.DEFAULT_ALERT_LINES)
             WTF.RefreshAlerts()
         end, WTF.ALERT_LINES_MIN, WTF.ALERT_LINES_MAX, 1, Plain, "At most this many lines at once.")
+    Slider(page, "GRIMOIRE_ALERTS_BACKGROUND", "Background opacity", WTF.DEFAULT_ALERT_BACKGROUND,
+        function() return WTF.db.alerts.background end,
+        function(value)
+            WTF.db.alerts.background = WTF.SanitizeWhole(value, WTF.ALERT_BACKGROUND_MIN, WTF.ALERT_BACKGROUND_MAX,
+                WTF.DEFAULT_ALERT_BACKGROUND)
+            WTF.RefreshAlerts()
+        end, WTF.ALERT_BACKGROUND_MIN, WTF.ALERT_BACKGROUND_MAX, 5, true,
+        "The dark panel behind the lines. 25% is 75% transparent; 0 shows the text alone.")
     Slider(page, "GRIMOIRE_ALERTS_SCALE", "Window size", WTF.DEFAULT_FRAME_SCALE,
         function() return WTF.db.alerts.scale end,
         function(value) WTF.SetAlertsScale(value) end,
