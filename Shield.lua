@@ -1,7 +1,8 @@
 local addonName, ns = ...
 
 -- Grimoire: this file is Dyre's Shields Up 1.2.1's Shield.lua (MIT, John
--- Bedworth; commit 8940229), unchanged below this note. Grimoire hosts it
+-- Bedworth; commit 8940229). Grimoire's one change: the mirror setting
+-- (lines marked "Grimoire:", and the *Left.tga textures). Grimoire hosts it
 -- (Core.lua: settings in GrimoireDB.shield, ns.AuraEngineKind and
 -- ns.CreateAuraContainer from the engines). The break sound needs Dyre's
 -- Sounds and stays off without it.
@@ -322,6 +323,7 @@ function ShieldDisplay.Sanitize(settings)
         position = position and {point = position.point, relativePoint = position.relativePoint,
             x = position.x, y = position.y},
         number = settings.number ~= false,
+        mirror = settings.mirror == true,
         breakSound = settings.breakSound == true,
         breakSoundKey = ShieldDisplay.SanitizeBreakSound(settings.breakSoundKey),
         scale = ShieldDisplay.SanitizeScale(settings.scale),
@@ -562,10 +564,52 @@ local function ScaleFromCenter(scale)
     Config().position = position
 end
 
+-- Grimoire: the mirror setting flips the display to curve around your
+-- character's left side. Mirrored copies of the crescent textures (named with
+-- MIRROR_SUFFIX) have the crescent in the left part of the square, the number
+-- moves under the left foot, and an unplaced ring starts left of you.
+local MIRROR_SUFFIX = "Left"
+
+local function Mirrored()
+    return Config().mirror == true
+end
+
+local function Arc(texture)
+    return Mirrored() and (texture .. MIRROR_SUFFIX) or texture
+end
+
+local function PlaceFoot()
+    local x = Mirrored() and (1 - TEXT_X) or TEXT_X
+    frame.foot:ClearAllPoints()
+    frame.foot:SetPoint("CENTER", frame, "BOTTOMLEFT", ARC_SIZE * x, ARC_SIZE * TEXT_Y)
+end
+
+-- Grimoire: a change of the mirror setting re-textures the outer crescent and
+-- the sample and moves the number, at once, also in combat (plain textures,
+-- no secure frames). The timed crescents take the side when their slots are
+-- built, so they follow after /reload: a bar handed to the engine is
+-- forbidden to AddOn code from then on (found in client, 13x).
+local function ApplySide()
+    local mirrored = Mirrored()
+    if frame.mirrored == mirrored then
+        return
+    end
+    frame.mirrored = mirrored
+    frame.background:SetTexture(Arc(ARC_TEXTURE))
+    frame.bar:SetStatusBarTexture(Arc(ARC_TEXTURE))
+    frame.timeBar:SetStatusBarTexture(Arc(ARC_TEXTURE))
+    if frame.sample and frame.sample.inner then
+        frame.sample.inner:SetTexture(Arc(INNER_ARC_TEXTURE))
+        frame.sample.innermost:SetTexture(Arc(INNERMOST_ARC_TEXTURE))
+    end
+    PlaceFoot()
+end
+
 function ShieldDisplay.Refresh()
     if not frame then
         return
     end
+    ApplySide()
     local settings = Config()
     local up, color = ActiveShields()
     local shown = color or SHIELDS[1].color
@@ -793,7 +837,8 @@ local function PlaceRing()
     if position then
         frame:SetPoint(position.point, UIParent, position.relativePoint, position.x, position.y)
     else
-        frame:SetPoint(DEFAULT_POINT[1], UIParent, DEFAULT_POINT[2], DEFAULT_POINT[3], DEFAULT_POINT[4])
+        local x = Mirrored() and -DEFAULT_POINT[3] or DEFAULT_POINT[3]
+        frame:SetPoint(DEFAULT_POINT[1], UIParent, DEFAULT_POINT[2], x, DEFAULT_POINT[4])
     end
 end
 
@@ -901,12 +946,12 @@ local function CrescentInitializer(entry)
         button:SetAllPoints(frame)
         local track = button:CreateTexture(nil, "BACKGROUND")
         FitCrescent(track, span)
-        track:SetTexture(texture)
+        track:SetTexture(Arc(texture))
         track:SetVertexColor(0, 0, 0)
         track:SetAlpha(BACKGROUND_ALPHA)
         local bar = CreateFrame("StatusBar", nil, button)
         FitCrescent(bar, span)
-        bar:SetStatusBarTexture(texture)
+        bar:SetStatusBarTexture(Arc(texture))
         bar:SetOrientation("VERTICAL")
         bar:SetStatusBarColor(entry.color[1], entry.color[2], entry.color[3])
         local direction = Enum.StatusBarTimerDirection and Enum.StatusBarTimerDirection.RemainingTime
@@ -970,12 +1015,14 @@ local function CreateSample()
     frame.sample:SetAllPoints()
     local inner = frame.sample:CreateTexture(nil, "ARTWORK")
     FitCrescent(inner, INNER_SPAN)
-    inner:SetTexture(INNER_ARC_TEXTURE)
+    inner:SetTexture(Arc(INNER_ARC_TEXTURE))
+    frame.sample.inner = inner
     local purple = SHIELDS[2].color
     inner:SetVertexColor(purple[1], purple[2], purple[3])
     local innermost = frame.sample:CreateTexture(nil, "ARTWORK")
     FitCrescent(innermost, INNERMOST_SPAN)
-    innermost:SetTexture(INNERMOST_ARC_TEXTURE)
+    innermost:SetTexture(Arc(INNERMOST_ARC_TEXTURE))
+    frame.sample.innermost = innermost
     local gold = SHIELDS[#SHIELDS].color
     innermost:SetVertexColor(gold[1], gold[2], gold[3])
     -- The sample's icons are the icon row's size.
@@ -1026,17 +1073,18 @@ local function CreateRing()
     frame.gated:SetPoint("BOTTOMRIGHT", frame.gate:GetStatusBarTexture(), "BOTTOMRIGHT")
     frame.background = frame.gated:CreateTexture(nil, "BACKGROUND")
     FitCrescent(frame.background, OUTER_SPAN)
-    frame.background:SetTexture(ARC_TEXTURE)
+    frame.mirrored = Mirrored()
+    frame.background:SetTexture(Arc(ARC_TEXTURE))
     frame.background:SetVertexColor(0, 0, 0)
     frame.background:SetAlpha(BACKGROUND_ALPHA)
     frame.bar = CreateFrame("StatusBar", nil, frame.gated)
     FitCrescent(frame.bar, OUTER_SPAN)
-    frame.bar:SetStatusBarTexture(ARC_TEXTURE)
+    frame.bar:SetStatusBarTexture(Arc(ARC_TEXTURE))
     frame.bar:SetOrientation("VERTICAL")
     -- Classic without an amount: the same crescent, drained by the shield's time.
     frame.timeBar = CreateFrame("StatusBar", nil, frame.gated)
     FitCrescent(frame.timeBar, OUTER_SPAN)
-    frame.timeBar:SetStatusBarTexture(ARC_TEXTURE)
+    frame.timeBar:SetStatusBarTexture(Arc(ARC_TEXTURE))
     frame.timeBar:SetOrientation("VERTICAL")
     frame.timeBar:Hide()
     -- The number: under the crescent's foot, in the opacity frame, at its own
@@ -1045,7 +1093,7 @@ local function CreateRing()
     -- would be in the number's units.
     frame.foot = frame:CreateTexture(nil, "ARTWORK")
     frame.foot:SetSize(1, 1)
-    frame.foot:SetPoint("CENTER", frame, "BOTTOMLEFT", ARC_SIZE * TEXT_X, ARC_SIZE * TEXT_Y)
+    PlaceFoot()
     frame.textHolder = CreateFrame("Frame", nil, frame.visible)
     frame.textHolder:SetSize(TEXT_BOX_WIDTH, TEXT_BOX_HEIGHT)
     frame.textHolder:SetPoint("TOP", frame.foot, "CENTER")

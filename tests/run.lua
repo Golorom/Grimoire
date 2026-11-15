@@ -7174,6 +7174,34 @@ test("shield: Grimoire hosts the shield display, locked with its other frames", 
     equal(state.wtf.db.shield.locked, true)
 end)
 
+test("shield: the mirror setting flips the crescents and the number to the left side", function()
+    local state = fixture()
+    local display = state.wtf.ShieldDisplay
+    local frame = display.frame
+    local base = "Interface\\AddOns\\Grimoire\\Textures\\ShieldArc"
+    local function footX()
+        return frame.foot.points[#frame.foot.points][4]
+    end
+    equal(state.wtf.db.shield.mirror, false, "right side by default")
+    equal(frame.background.texture, base)
+    equal(footX(), 160 * 0.8)
+    state.wtf.db.shield.mirror = true
+    display.Refresh()
+    equal(frame.background.texture, base .. "Left")
+    equal(frame.bar.statusBarTexture, base .. "Left")
+    equal(frame.timeBar.statusBarTexture, base .. "Left")
+    equal(frame.sample.inner.texture, base .. "InnerLeft")
+    equal(frame.sample.innermost.texture, base .. "InnermostLeft")
+    equal(#frame.foot.points, 1, "the number's anchor is replaced, not added")
+    equal(math.abs(footX() - 160 * 0.2) < 0.001, true, "the number under the left foot")
+    state.wtf.db.shield.mirror = false
+    display.Refresh()
+    equal(frame.background.texture, base)
+    equal(frame.sample.inner.texture, base .. "Inner")
+    equal(footX(), 160 * 0.8)
+    equal(display.Sanitize({mirror = "yes"}).mirror, false, "only true turns it on")
+end)
+
 test("tracker: Compact and smaller by default; WTF's untouched defaults move once, a choice stays", function()
     local fresh = fixture({freshDB = true})
     equal(fresh.wtf.db.tracker.theme, "compact")

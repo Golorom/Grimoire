@@ -411,7 +411,7 @@ local PREDICT_NEEDS = ""
 local SMART_CURSE_HELP = "Smart curse: with no modifier, Curse of Tongues on a mob with mana, else Curse of "
     .. "the Elements, else Curse of Weakness, chosen out of combat as your target changes. Shift casts Weakness, "
     .. "Ctrl Tongues (Weakness if you do not know Tongues), Alt Recklessness. The \"! Curse\" macro and the "
-    .. "Smart curse key binding (Key Bindings, Warlock Tools Forever) cast it too."
+    .. "Smart curse key binding (Keybindings, AddOns) cast it too."
 
 local function AddCurseSection(page, layout)
     if not (WTF.SmartCurseAvailable and WTF.SmartCurseAvailable()) then
@@ -1031,6 +1031,10 @@ local function AddAlertsPage(parent)
         function() WTF.ShieldDisplay.Refresh() end)
     Flag(page, "GRIMOIRE_SHIELD_NUMBER", "Show the absorb number", "shield", "number", true,
         "The amount left, under the crescent.", function() WTF.ShieldDisplay.Refresh() end)
+    Flag(page, "GRIMOIRE_SHIELD_MIRROR", "Left side (mirrored)", "shield", "mirror", false,
+        "Flips the crescent to curve around your character's left side. Unlock frames to drag it into place. "
+            .. "The thin inner crescents for timed shields flip after /reload.",
+        function() WTF.ShieldDisplay.Refresh() end)
 end
 
 function WTF.InitializeOptions()
