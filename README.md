@@ -5,7 +5,7 @@ Personal fork of Warlock Tools Forever 1.8.0 by Dyre, with the engines of Dyre's
 Sources:
 - https://github.com/jbedworth/WarlockToolsForever (1.8.0, commit aec6409)
 - https://github.com/jbedworth/DyresToolkit (2.9.2, commit e8b0094)
-- https://github.com/jbedworth/DyresShieldsUp (1.2.1, commit 8940229): Shield.lua and Textures\ShieldArc*.tga, unchanged
+- https://github.com/jbedworth/DyresShieldsUp (1.2.1, commit 8940229): Shield.lua and Textures\ShieldArc*.tga; Grimoire adds a mirror setting and the mirrored *Left.tga copies
 - Threat, cooldown and Nightfall logic follow Dyre's Toolkit Threat.lua and Dyre's Buff Reminders (MIT); the code in Threat.lua, Cooldowns.lua and Procs.lua is Grimoire's own
 
 ## Added in 0.2.0
