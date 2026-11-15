@@ -7101,6 +7101,17 @@ test("Nightfall: the game plays the Imp chirp for Shadow Trance; the icon's slot
     equal(left, 0)
 end)
 
+test("Nightfall: the icon drags while unlocked and takes no mouse while locked", function()
+    local state = fixture()
+    local icon = state.env.GrimoireNightfall
+    equal(icon.mouseDisabled, true)
+    state.slash("unlock")
+    equal(icon.mouseDisabled, false, "draggable")
+    equal(icon.scripts.OnDragStart ~= nil, true)
+    state.slash("lock")
+    equal(icon.mouseDisabled, true)
+end)
+
 test("Nightfall: a Forever buff ID is learned out of combat; an encounter delays the change", function()
     local state = fixture()
     state.buffs = {["Shadow Trance"] = {name = "Shadow Trance", spellId = 99001}}

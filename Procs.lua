@@ -125,6 +125,8 @@ function WTF.RefreshProcs()
     end
     holder.mover:SetShown(not WTF.db.locked)
     holder.sample:SetShown(not WTF.db.locked)
+    -- Takes the mouse only while unlocked, to be dragged.
+    holder:EnableMouse(not WTF.db.locked)
     holder:SetShown(WTF.db.procs.icon or not WTF.db.locked)
 end
 
