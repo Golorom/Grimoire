@@ -125,6 +125,7 @@ local REQUIRED_NAMESPACE = {
     "SanitizeThreat", "InitializeThreat", "SanitizePet", "InitializePet",
     "SanitizeProcs", "InitializeProcs", "RefreshProcs", "ResetProcsPosition",
     "SanitizeCooldowns", "InitializeCooldowns",
+    "SanitizeKeyLabels", "InitializeKeyLabels", "RefreshKeyLabels",
 }
 
 local function CheckInstalledFiles()
@@ -558,6 +559,9 @@ function WTF.SanitizeDB(db)
         db.cooldowns = WTF.SanitizeCooldowns(db.cooldowns)
         db.shield = WTF.ShieldDisplay.Sanitize(db.shield)
     end
+    if WTF.SanitizeKeyLabels then
+        db.keyLabels = WTF.SanitizeKeyLabels(db.keyLabels)
+    end
     db.locked = db.locked ~= false
     db.grid = db.grid ~= false
     db.stones.locked = db.locked
@@ -897,6 +901,7 @@ events:SetScript("OnEvent", function(self, event, loadedName)
     WTF.InitializeThreat()
     WTF.InitializePet()
     WTF.InitializeCooldowns()
+    WTF.InitializeKeyLabels()
     WTF.ShieldDisplay.Initialize({settings = function() return WTF.db.shield end, report = WTF.Report,
         unlockHint = "Drag to move. /grim lock when done", missingSounds = function() end})
     WTF.InitializeProbe()

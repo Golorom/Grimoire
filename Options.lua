@@ -1054,6 +1054,9 @@ function WTF.InitializeOptions()
         "Bars for the mobs you Fear or Banish, with their time left, and a Focus box above them with your "
             .. "focus's Fear. Click the Focus box to fear your focus again, or a Banish row to banish your focus "
             .. "again.", RefreshControl)
+    Flag(category, "GRIMOIRE_PET_KEY_LABELS", "Pet bar key labels at normal size", "keyLabels", "petNormal", true,
+        "Edit Mode's Icon Size makes the pet bar's key labels grow with its buttons. With this on they stay the "
+            .. "size of your other bars' labels.", function() WTF.RefreshKeyLabels() end)
     do
         local unlocked = Proxy(category, "GRIMOIRE_UNLOCKED", Settings.VarType.Boolean, "Unlock frames to move them",
             false,

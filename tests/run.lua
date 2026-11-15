@@ -37,7 +37,7 @@ local TOOLKIT_FILES = {"Engine/Shim.lua", "Engine/Auras.lua", "Engine/Units.lua"
 local TOOLKIT_DIR = ""
 local RUNTIME_FILES = {"Commands.lua", "Core.lua", "Layout.lua", "Shards.lua", "Stones.lua", "Tracker.lua",
     "Dots.lua", "Predict.lua", "Control.lua", "Alerts.lua", "Reminders.lua", "Threat.lua", "Pet.lua", "Procs.lua",
-    "Cooldowns.lua", "Shield.lua", "Probe.lua", "Options.lua"}
+    "Cooldowns.lua", "KeyLabels.lua", "Shield.lua", "Probe.lua", "Options.lua"}
 local SHARD = 6265
 local SPELLS = {[688] = "Summon Imp", [697] = "Summon Voidwalker", [691] = "Summon Felhunter",
     [7812] = "Sacrifice", [2641] = "Dismiss Pet", [17941] = "Shadow Trance", [1120] = "Drain Soul", [11675] = "Drain Soul", [8288] = "Drain Soul", [686] = "Shadow Bolt", [172] = "Corruption",
@@ -7200,6 +7200,40 @@ test("shield: the mirror setting flips the crescents and the number to the left 
     equal(frame.sample.inner.texture, base .. "Inner")
     equal(footX(), 160 * 0.8)
     equal(display.Sanitize({mirror = "yes"}).mirror, false, "only true turns it on")
+end)
+
+test("key labels: the pet bar's labels keep their size when Edit Mode scales its buttons", function()
+    local function label()
+        return {font = "Fonts\\ARIALN.TTF", fontSize = 12, fontFlags = "OUTLINE",
+            GetFont = function(self) return self.font, self.fontSize, self.fontFlags end,
+            SetFont = function(self, font, size, flags) self.font, self.fontSize, self.fontFlags = font, size, flags end}
+    end
+    local scale = 1.5
+    local globals = {NUM_PET_ACTION_SLOTS = 10}
+    for index = 1, 10 do
+        globals["PetActionButton" .. index] = {HotKey = label(), GetEffectiveScale = function() return scale end}
+    end
+    local state = fixture({globals = globals})
+    local hotkey = state.env.PetActionButton1.HotKey
+    equal(state.wtf.db.keyLabels.petNormal, true, "on by default")
+    equal(hotkey.fontSize, 12 / 1.5, "a 150% pet bar keeps 100% labels")
+    equal(hotkey.font, "Fonts\\ARIALN.TTF")
+    equal(hotkey.fontFlags, "OUTLINE")
+    equal(state.env.PetActionButton10.HotKey.fontSize, 12 / 1.5)
+    scale = 2
+    state.emit("EDIT_MODE_LAYOUTS_UPDATED")
+    equal(hotkey.fontSize, 12 / 2, "follows a new size from the client's size, not its own last change")
+    state.wtf.db.keyLabels.petNormal = false
+    state.wtf.RefreshKeyLabels()
+    equal(hotkey.fontSize, 12, "off: the client's own size again")
+    equal(state.wtf.SanitizeKeyLabels({petNormal = false}).petNormal, false)
+end)
+
+test("key labels: no pet bar in the client is no error", function()
+    local state = fixture()
+    state.wtf.RefreshKeyLabels()
+    state.emit("PET_BAR_UPDATE")
+    equal(state.wtf.db.keyLabels.petNormal, true)
 end)
 
 test("tracker: Compact and smaller by default; WTF's untouched defaults move once, a choice stays", function()

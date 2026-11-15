@@ -37,6 +37,7 @@ Threat.lua
 Pet.lua
 Procs.lua
 Cooldowns.lua
+KeyLabels.lua
 Shield.lua
 Probe.lua
 Options.lua
