@@ -1,7 +1,7 @@
 local _, WTF = ...
 
 local USAGE = "Use /grim, /grim test (sample alerts), /grim shards, /grim stones, /grim unlock, /grim lock, "
-    .. "/grim reset, /grim reset_focus, or for testing /grim debug_log, debug_log_reset, debug_checks, "
+    .. "/grim reset, /grim reset_focus, or for testing /grim debug_log, debug_log_save, debug_log_reset, debug_checks, "
     .. "debug_restrictions, debug_alerts, debug_reminders, "
     .. "debug_threat, debug_pet, debug_procs, debug_cooldowns, debug_shield, debug_shards, debug_stones, "
     .. "debug_tracker, debug_predict, debug_control."
@@ -29,6 +29,7 @@ local COMMANDS = {
     test = {handler = "TestAlerts"},
     debug_checks = {handler = "ReportForeverChecks", always = true},
     debug_log = {handler = "ReportDiagnostics"},
+    debug_log_save = {handler = "SaveDiagnostics"},
     debug_log_reset = {handler = "ResetDiagnostics"},
     debug_alerts = {handler = "ReportAlertsDebug"},
     debug_reminders = {handler = "ReportRemindersDebug"},

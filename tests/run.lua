@@ -7484,6 +7484,64 @@ test("diagnostics: a check that fails three times stops for the session; the oth
     equal(facts["pet.health@combat.world"].secret, 10, "pet health still counted")
 end)
 
+test("diagnostics: a settings page collects, shows, saves and clears the logs", function()
+    local state = diagnosticsFixture()
+    local page = settingsPage(state, "Diagnostics")
+    equal(state.settings.GRIMOIRE_DIAGNOSTICS.category, page, "Collect logs sits on the Diagnostics page")
+    equal(state.settings.GRIMOIRE_DIAGNOSTICS.name, "Collect logs")
+    local buttons = {}
+    for _, heading in ipairs(page.headings) do
+        if heading.buttonText then buttons[heading.buttonText] = heading end
+    end
+    passTime(state, 10)
+    state.clear()
+    buttons["Show in chat"].buttonClick()
+    contains(table.concat(state.messages, "\n"), "Threat state in combat: not seen yet")
+    local reloads = 0
+    state.env.C_UI = {Reload = function() reloads = reloads + 1 end}
+    state.combat = true
+    buttons["Save"].buttonClick()
+    equal(reloads, 0, "no reload in combat")
+    contains(state.last(), "waits until combat ends")
+    state.combat = false
+    buttons["Save"].buttonClick()
+    equal(reloads, 1, "Save reloads the interface, which writes the saved settings")
+    state.slash("debug_log_save")
+    equal(reloads, 2)
+    buttons["Clear"].buttonClick()
+    equal(next(diagnosticFacts(state)), nil)
+    state.settings.GRIMOIRE_DIAGNOSTICS:SetValue(false)
+    equal(state.wtf.db.diagnostics.enabled, false)
+end)
+
+test("diagnostics: the alert log keeps each alert's kind, level and place, never its text", function()
+    local state = diagnosticsFixture()
+    state.combat = true
+    state.wtf.Alert("threat:aggro:Creature-1", "Aggro! Boar is on you.", "danger")
+    state.combat = false
+    state.wtf.Alert("cooldown:deathcoil", "Death Coil ready.", "info")
+    local events = state.env.GrimoireAccountDB.diagnostics.events
+    equal(#events, 2)
+    equal(events[1].key, "threat:aggro")
+    equal(events[1].level, "danger")
+    equal(events[1].place, "combat.world")
+    equal(events[2].key, "cooldown:deathcoil")
+    for _, event in ipairs(events) do
+        for _, value in pairs(event) do
+            equal(tostring(value):find("Boar", 1, true), nil)
+            equal(tostring(value):find("Creature", 1, true), nil)
+        end
+    end
+    for index = 1, 120 do state.wtf.Alert("test:" .. index, "Line " .. index, "info") end
+    equal(#events, 100, "the last 100 only")
+    state.clear()
+    state.slash("debug_log")
+    contains(table.concat(state.messages, "\n"), "alerts logged: 100")
+    state.wtf.db.diagnostics.enabled = false
+    state.wtf.Alert("pet:died", "Your demon died.", "danger")
+    equal(events[#events].key, "test", "nothing logged while off")
+end)
+
 test("Grimoire never sends chat, whispers, emotes, or addon messages, in a group or alone", function()
     for _, group in ipairs({"party", "raid", false}) do
         local state = controlFixture({group = group or nil, known = {[FEAR] = true, [BANISH] = true,

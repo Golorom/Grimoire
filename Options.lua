@@ -12,6 +12,7 @@ local TRACKER_TITLE = "DoT Tracker"
 local DOTS_TITLE = "DoTs"
 local CONTROL_TITLE = "Control"
 local ALERTS_TITLE = "Alerts"
+local DIAGNOSTICS_TITLE = "Diagnostics"
 local UNAVAILABLE = "The AddOn settings page is unavailable on this client. Use /grim shards for status."
 local GOLD = {1, 0.82, 0}
 
@@ -1037,6 +1038,35 @@ local function AddAlertsPage(parent)
         function() WTF.ShieldDisplay.Refresh() end)
 end
 
+-- Grimoire 0.2.1: the background diagnostics (Probe.lua) on a page of their own.
+local function AddButton(layout, name, buttonText, click, tooltip)
+    if type(CreateSettingsButtonInitializer) == "function" and type(layout) == "table"
+            and type(layout.AddInitializer) == "function" then
+        layout:AddInitializer(CreateSettingsButtonInitializer(name, buttonText, click, tooltip, true))
+    end
+end
+
+local function AddDiagnosticsPage(parent)
+    local page, layout = Settings.RegisterVerticalLayoutSubcategory(parent, DIAGNOSTICS_TITLE)
+    Heading(layout, "Logs for fixing Grimoire", "What the game lets Grimoire read, counted while you play, and "
+        .. "the last 100 alerts Grimoire showed. Kept in Grimoire's saved settings on your computer only: no "
+        .. "names, nothing sent.")
+    Flag(page, "GRIMOIRE_DIAGNOSTICS", "Collect logs", "diagnostics", "enabled", true,
+        "While you play, Grimoire notes whether threat, spell cooldowns, pet health and cast times come back "
+            .. "readable or hidden, in and out of combat, and which of its alerts showed when. The game writes them "
+            .. "to disk when you log out, reload the interface, or quit.",
+        function() WTF.RefreshDiagnostics() end)
+    AddButton(layout, "See the logs", "Show in chat", WTF.ReportDiagnostics,
+        "Print the counts, an answer for each open question, and the last alerts in your chat frame (only you "
+            .. "see it). Same as /grim debug_log.")
+    AddButton(layout, "Save the logs to disk now", "Save", WTF.SaveDiagnostics,
+        "The game writes AddOn data to disk only when you log out, reload the interface, or quit; AddOns cannot "
+            .. "write files themselves. This reloads the interface now (a short loading screen), out of combat "
+            .. "only. Same as /grim debug_log_save.")
+    AddButton(layout, "Start the logs over", "Clear", WTF.ResetDiagnostics,
+        "Forget the counts and alerts collected so far. Same as /grim debug_log_reset.")
+end
+
 function WTF.InitializeOptions()
     if not HasSettingsAPI() then
         return
@@ -1057,11 +1087,6 @@ function WTF.InitializeOptions()
     Flag(category, "GRIMOIRE_PET_KEY_LABELS", "Pet bar key labels at normal size", "keyLabels", "petNormal", true,
         "Edit Mode's Icon Size makes the pet bar's key labels grow with its buttons. With this on they stay the "
             .. "size of your other bars' labels.", function() WTF.RefreshKeyLabels() end)
-    Flag(category, "GRIMOIRE_DIAGNOSTICS", "Background diagnostics", "diagnostics", "enabled", true,
-        "While you play, Grimoire notes whether the game lets it read threat, spell cooldowns, pet health and "
-            .. "cast times, in and out of combat, and keeps only those counts in its saved settings (written when "
-            .. "you log out or /reload). No names, nothing sent. /grim debug_log shows them.",
-        function() WTF.RefreshDiagnostics() end)
     do
         local unlocked = Proxy(category, "GRIMOIRE_UNLOCKED", Settings.VarType.Boolean, "Unlock frames to move them",
             false,
@@ -1094,6 +1119,7 @@ function WTF.InitializeOptions()
     Settings.RegisterCanvasLayoutSubcategory(category, dotsPage, DOTS_TITLE)
     AddControlPage(category)
     AddAlertsPage(category)
+    AddDiagnosticsPage(category)
     Settings.RegisterAddOnCategory(category)
 end
 

@@ -121,7 +121,7 @@ local REQUIRED_NAMESPACE = {
     "RefreshTrackerPrediction",
     "ReportRestrictions", "ResetFocusWorks", "InitializeProbe",
     "SanitizeDiagnostics", "SanitizeDiagnosticsRecord", "StartDiagnostics", "RefreshDiagnostics",
-    "ReportDiagnostics", "ResetDiagnostics", "InitializeOptions", "OpenSettings",
+    "ReportDiagnostics", "ResetDiagnostics", "SaveDiagnostics", "NoteAlertEvent", "InitializeOptions", "OpenSettings",
     "SanitizeAlerts", "InitializeAlerts", "RefreshAlerts", "Alert", "TestAlerts", "ResetAlertsPosition",
     "SanitizeReminders", "InitializeReminders", "RefreshReminders", "ResetRemindersPosition",
     "SanitizeThreat", "InitializeThreat", "SanitizePet", "InitializePet",

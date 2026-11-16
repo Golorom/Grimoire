@@ -203,6 +203,10 @@ function WTF.Alert(key, text, level, options)
     if #history > HISTORY then
         table.remove(history, 1)
     end
+    -- Grimoire 0.2.1: the diagnostics' alert log keeps the key's kind, not the text.
+    if WTF.NoteAlertEvent then
+        WTF.NoteAlertEvent(key, level)
+    end
     local settings = WTF.db and WTF.db.alerts
     if settings and settings.enabled and log then
         AddLine(text, level)

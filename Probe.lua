@@ -372,6 +372,8 @@ local CAST_GAP = 2
 local CAST_READ_DELAY = 0.2
 local MAX_FAILURES = 3
 local COUNT_FIELDS = {"n", "readable", "secret", "none", "error"}
+local MAX_EVENTS = 100
+local EVENTS_SHOWN = 10
 
 -- The questions the 0.2 test asked, answered from the combat counts.
 local ANSWERS = {
@@ -398,7 +400,7 @@ end
 -- A damaged or older record starts over; a sane one keeps at most MAX_FACTS.
 function WTF.SanitizeDiagnosticsRecord(saved)
     if type(saved) ~= "table" or saved.version ~= RECORD_VERSION then
-        return {version = RECORD_VERSION, sessions = 0, facts = {}}
+        return {version = RECORD_VERSION, sessions = 0, facts = {}, events = {}}
     end
     local facts, count = {}, 0
     if type(saved.facts) == "table" then
@@ -412,8 +414,20 @@ function WTF.SanitizeDiagnosticsRecord(saved)
             end
         end
     end
+    local events = {}
+    if type(saved.events) == "table" then
+        for _, event in ipairs(saved.events) do
+            if type(event) == "table" and type(event.key) == "string" then
+                events[#events + 1] = {key = Text(event.key), level = Text(event.level), place = Text(event.place),
+                    time = Text(event.time)}
+            end
+        end
+        while #events > MAX_EVENTS do
+            table.remove(events, 1)
+        end
+    end
     return {version = RECORD_VERSION, sessions = Count(saved.sessions), since = Text(saved.since),
-        build = Text(saved.build), facts = facts}
+        build = Text(saved.build), facts = facts, events = events}
 end
 
 -- The per-character switch, on by default.
@@ -430,11 +444,11 @@ local function Enabled()
     return WTF.db and WTF.db.diagnostics and WTF.db.diagnostics.enabled == true and Record() ~= nil
 end
 
-local function Stamp()
+local function Stamp(format)
     if type(date) ~= "function" then
         return nil
     end
-    local ok, text = pcall(date, "%Y-%m-%d %H:%M")
+    local ok, text = pcall(date, format or "%Y-%m-%d %H:%M")
     return ok and Text(text) or nil
 end
 
@@ -747,6 +761,13 @@ function WTF.ReportDiagnostics()
     for _, answer in ipairs(ANSWERS) do
         Line(answer.label .. ": " .. Verdict(answer.check))
     end
+    local events = record.events
+    Line(string.format("alerts logged: %d; the last ones:", #events))
+    for index = math.max(1, #events - EVENTS_SHOWN + 1), #events do
+        local event = events[index]
+        Line(string.format("  %s %s %s %s", tostring(event.time or "-"), event.key, tostring(event.level or "-"),
+            tostring(event.place or "-")))
+    end
     local keys = {}
     for key in pairs(record.facts) do
         keys[#keys + 1] = key
@@ -765,7 +786,46 @@ function WTF.ResetDiagnostics()
     if not record then
         return
     end
-    record.facts, record.sessions, record.since = {}, 0, Stamp()
+    record.facts, record.events, record.sessions, record.since = {}, {}, 0, Stamp()
     recorder.factCount = 0
     WTF.Report("debug_log cleared. Counting starts again now.")
+end
+
+-- The kind of an alert, from its key: "threat:aggro:<mob>" is kept as
+-- "threat:aggro", so no GUID or name goes into the log.
+local function AlertKind(key)
+    if type(key) ~= "string" then
+        return "?"
+    end
+    local base = key:match("^([%a_]+)") or "?"
+    local sub = key:match("^[%a_]+:([%a_]+)")
+    return sub and (base .. ":" .. sub) or base
+end
+
+function WTF.NoteAlertEvent(key, level)
+    if not Enabled() then
+        return
+    end
+    local events = Record().events
+    events[#events + 1] = {key = AlertKind(key), level = Text(level), place = Place(),
+        time = Stamp("%Y-%m-%d %H:%M:%S")}
+    while #events > MAX_EVENTS do
+        table.remove(events, 1)
+    end
+end
+
+-- Addons cannot write files: the game writes saved settings at logout, a
+-- reload, or quitting. This reloads the interface, out of combat only.
+function WTF.SaveDiagnostics()
+    if InCombatLockdown() then
+        WTF.Report("debug_log: saving reloads the interface, so it waits until combat ends. Click again then.")
+        return
+    end
+    local reload = type(C_UI) == "table" and type(C_UI.Reload) == "function" and C_UI.Reload
+        or rawget(_G, "ReloadUI")
+    if type(reload) ~= "function" then
+        WTF.Report("debug_log: type /reload to save the logs.")
+        return
+    end
+    reload()
 end
