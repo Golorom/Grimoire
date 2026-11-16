@@ -7312,6 +7312,178 @@ test("debug_checks answers in and out of combat without errors", function()
     end
 end)
 
+-- Grimoire 0.2.1: background diagnostics (Probe.lua).
+local function diagnosticsFixture(extra)
+    local state = controlFixture(extra)
+    state.units.pet = {name = "Vw", guid = "Pet-1"}
+    local function hiddenInCombat(value)
+        if state.combat then
+            local hidden = secret()
+            state.secrets[hidden] = true
+            return hidden
+        end
+        return value
+    end
+    state.env.UnitThreatSituation = function() return hiddenInCombat(1) end
+    state.env.UnitDetailedThreatSituation = function() return false, 1, hiddenInCombat(40), 40, 100 end
+    state.env.C_Spell.GetSpellInfo = function() return {castTime = state.instant and 0 or 2500} end
+    state.env.C_Secrets = {
+        ShouldUnitThreatStateBeSecret = function() return state.combat end,
+        ShouldAurasBeSecret = function() return state.combat end,
+        ShouldSpellCooldownBeSecret = function() return state.combat end,
+    }
+    state.cooldowns[FEAR] = {startTime = 90, duration = 30}
+    return state
+end
+
+local function diagnosticFacts(state) return state.env.GrimoireAccountDB.diagnostics.facts end
+
+local function passTime(state, seconds)
+    for _ = 1, seconds do
+        state.now = state.now + 1
+        state.runTimers()
+    end
+end
+
+local function fight(state, seconds)
+    state.combat = true
+    state.emit("PLAYER_REGEN_DISABLED")
+    passTime(state, seconds)
+end
+
+local function endFight(state)
+    state.combat = false
+    state.emit("PLAYER_REGEN_ENABLED")
+    passTime(state, 3)
+end
+
+test("diagnostics: counts readable and secret values in and out of combat, with no names or GUIDs", function()
+    local state = diagnosticsFixture()
+    passTime(state, 10)
+    local facts = diagnosticFacts(state)
+    equal(facts["threat.target@idle.world"].readable, 1, "the login sample")
+    equal(facts["threat.target@idle.world"].sample, "1")
+    equal(facts["pet.health@idle.world"].readable, 1)
+    fight(state, 60)
+    state.emit("UNIT_SPELLCAST_SUCCEEDED", "player", "cast-1", FEAR)
+    passTime(state, 1)
+    endFight(state)
+    local combat = facts["threat.target@combat.world"]
+    equal(combat.secret, 10, "at most ten samples in a fight")
+    equal(combat.readable, 0)
+    equal(facts["threat.percent@combat.world"].secret, 10)
+    equal(facts["threat.pet@combat.world"].secret, 10)
+    equal(facts["threat.hidden@combat.world"].sample, "true")
+    equal(facts["pet.health@combat.world"].secret, 10, "pet health is secret in combat, as the mock has it")
+    equal(facts["shadowbolt.castTime@combat.world"].readable, 10)
+    equal(facts["shadowbolt.castTime@combat.world"].sample, "2500")
+    equal(facts["cooldown.read@combat.world"].secret, 1, "the cast's cooldown, read just after it")
+    equal(facts["cooldown.hidden@combat.world"].sample, "true")
+    equal(facts["cast.spellID@combat.world"].readable, 1)
+    equal(facts["threat.target@idle.world"].readable, 2, "and once after the fight")
+    for key, fact in pairs(facts) do
+        for _, field in ipairs({"sample", "first", "last"}) do
+            local text = tostring(fact[field] or "")
+            for _, private in ipairs({"Boar", "Creature-1", "Vw", "Pet-1", "Dyre"}) do
+                equal(text:find(private, 1, true), nil, key .. " keeps " .. private)
+            end
+        end
+    end
+    state.clear()
+    state.slash("debug_log")
+    local text = table.concat(state.messages, "\n")
+    equal(text:find("failed", 1, true), nil, text)
+    contains(text, "Threat state in combat: secret (0 readable, 10 secret)")
+    contains(text, "Spell cooldowns in combat: secret (0 readable, 1 secret)")
+    contains(text, "Pet health in combat: secret (0 readable, 10 secret)")
+    contains(text, "Shadow Bolt cast time in combat: readable (10 readable, 0 secret)")
+    contains(text, "threat.target@combat.world n=10 readable=0 secret=10")
+end)
+
+test("diagnostics: a short fight stops sampling when it ends; a cast burst reads one cooldown", function()
+    local state = diagnosticsFixture()
+    passTime(state, 10)
+    fight(state, 4)
+    endFight(state)
+    passTime(state, 30)
+    local facts = diagnosticFacts(state)
+    equal(facts["threat.target@combat.world"].n, 2, "samples at 1 s and 4 s, none after the fight")
+    state.combat = true
+    for _ = 1, 3 do
+        state.emit("UNIT_SPELLCAST_SUCCEEDED", "player", "cast-1", FEAR)
+    end
+    passTime(state, 1)
+    equal(facts["cooldown.read@combat.world"].n, 1, "one read per two seconds")
+    equal(facts["cast.spellID@combat.world"].n, 3)
+    state.instant = true
+    state.combat = false
+    state.emit("PLAYER_REGEN_ENABLED")
+    passTime(state, 3)
+    equal(facts["shadowbolt.instant@idle.world"].readable, 1, "an instant Shadow Bolt is noted")
+end)
+
+test("diagnostics: switched off, nothing is counted, and turning it off stops a fight's sampling", function()
+    local off = diagnosticsFixture({db = {diagnostics = {enabled = false}}})
+    passTime(off, 10)
+    fight(off, 30)
+    off.emit("UNIT_SPELLCAST_SUCCEEDED", "player", "cast-1", FEAR)
+    endFight(off)
+    equal(next(diagnosticFacts(off)), nil, "no facts while off")
+    equal(off.env.GrimoireAccountDB.diagnostics.sessions, 0)
+    local on = diagnosticsFixture()
+    passTime(on, 10)
+    fight(on, 4)
+    on.wtf.db.diagnostics.enabled = false
+    on.wtf.RefreshDiagnostics()
+    on.wtf.db.diagnostics.enabled = true
+    passTime(on, 30)
+    equal(diagnosticFacts(on)["threat.target@combat.world"].n, 2, "the fight's sampling stopped")
+    on.clear()
+    on.slash("debug_log_reset")
+    equal(next(diagnosticFacts(on)), nil, "debug_log_reset clears the counts")
+    contains(on.last(), "cleared")
+end)
+
+test("diagnostics: a damaged or older record starts clean, and a full one keeps at most 150 checks", function()
+    local damaged = fixture({accountDB = {engine = {}, diagnostics = {version = 1, sessions = -3, since = 7,
+        facts = {bad = "x", ["threat.target@idle.world"] = {n = "many", readable = 2, sample = {}}}}}})
+    local record = damaged.env.GrimoireAccountDB.diagnostics
+    equal(record.sessions, 1, "a bad count becomes 0, then this login")
+    equal(record.facts.bad, nil)
+    equal(record.facts["threat.target@idle.world"].n, 0)
+    equal(record.facts["threat.target@idle.world"].readable, 2)
+    equal(record.facts["threat.target@idle.world"].sample, nil)
+    local older = fixture({accountDB = {engine = {}, diagnostics = {version = 99, facts = {a = {n = 1}}}}})
+    equal(next(older.env.GrimoireAccountDB.diagnostics.facts), nil, "another version starts over")
+    local many = {}
+    for index = 1, 200 do many["check" .. index .. "@idle.world"] = {n = 1, readable = 1} end
+    local full = diagnosticsFixture({accountDB = {engine = {focusWorks = true},
+        diagnostics = {version = 1, sessions = 2, facts = many}}})
+    local count = 0
+    for _ in pairs(full.env.GrimoireAccountDB.diagnostics.facts) do count = count + 1 end
+    equal(count, 150)
+    passTime(full, 10)
+    count = 0
+    for _ in pairs(full.env.GrimoireAccountDB.diagnostics.facts) do count = count + 1 end
+    equal(count, 150, "no new checks past the cap")
+end)
+
+test("diagnostics: a check that fails three times stops for the session; the others go on", function()
+    local state = diagnosticsFixture()
+    state.env.UnitThreatSituation = function() error("threat refused") end
+    passTime(state, 10)
+    fight(state, 60)
+    endFight(state)
+    local facts = diagnosticFacts(state)
+    local errors = 0
+    for key, fact in pairs(facts) do
+        if key:find("^threat%.target@") then errors = errors + fact.error end
+    end
+    equal(errors, 3)
+    contains(facts["threat.target@idle.world"].sample, "threat refused")
+    equal(facts["pet.health@combat.world"].secret, 10, "pet health still counted")
+end)
+
 test("Grimoire never sends chat, whispers, emotes, or addon messages, in a group or alone", function()
     for _, group in ipairs({"party", "raid", false}) do
         local state = controlFixture({group = group or nil, known = {[FEAR] = true, [BANISH] = true,

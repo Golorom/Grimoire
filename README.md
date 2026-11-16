@@ -21,6 +21,10 @@ Sources:
 - DoT tracker: Compact and smaller by default; WTF's untouched defaults move once.
 - Raid marker settings dropped. /grim debug_checks.
 
+## Added after 0.2.0
+
+- Background diagnostics (Probe.lua, on by default, Options: "Background diagnostics"): while you play, Grimoire counts whether threat, spell cooldowns, pet health, Shadow Bolt's cast time and the combat log tab come back readable or secret, in and out of combat, in the open world or an instance. Counts only, no names or GUIDs, kept in GrimoireAccountDB.diagnostics (written at logout or /reload). /grim debug_log shows them with a verdict for each open question; /grim debug_log_reset clears them.
+
 ## Changes from upstream
 
 Engine (Toolkit files):

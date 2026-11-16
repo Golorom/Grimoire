@@ -1057,6 +1057,11 @@ function WTF.InitializeOptions()
     Flag(category, "GRIMOIRE_PET_KEY_LABELS", "Pet bar key labels at normal size", "keyLabels", "petNormal", true,
         "Edit Mode's Icon Size makes the pet bar's key labels grow with its buttons. With this on they stay the "
             .. "size of your other bars' labels.", function() WTF.RefreshKeyLabels() end)
+    Flag(category, "GRIMOIRE_DIAGNOSTICS", "Background diagnostics", "diagnostics", "enabled", true,
+        "While you play, Grimoire notes whether the game lets it read threat, spell cooldowns, pet health and "
+            .. "cast times, in and out of combat, and keeps only those counts in its saved settings (written when "
+            .. "you log out or /reload). No names, nothing sent. /grim debug_log shows them.",
+        function() WTF.RefreshDiagnostics() end)
     do
         local unlocked = Proxy(category, "GRIMOIRE_UNLOCKED", Settings.VarType.Boolean, "Unlock frames to move them",
             false,

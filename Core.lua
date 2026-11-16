@@ -119,7 +119,9 @@ local REQUIRED_NAMESPACE = {
     "SetStonesScale", "SetShardCounterScale",
     "TrackerOutlineAvailable", "SetTrackerOutlineWidth",
     "RefreshTrackerPrediction",
-    "ReportRestrictions", "ResetFocusWorks", "InitializeProbe", "InitializeOptions", "OpenSettings",
+    "ReportRestrictions", "ResetFocusWorks", "InitializeProbe",
+    "SanitizeDiagnostics", "SanitizeDiagnosticsRecord", "StartDiagnostics", "RefreshDiagnostics",
+    "ReportDiagnostics", "ResetDiagnostics", "InitializeOptions", "OpenSettings",
     "SanitizeAlerts", "InitializeAlerts", "RefreshAlerts", "Alert", "TestAlerts", "ResetAlertsPosition",
     "SanitizeReminders", "InitializeReminders", "RefreshReminders", "ResetRemindersPosition",
     "SanitizeThreat", "InitializeThreat", "SanitizePet", "InitializePet",
@@ -562,6 +564,9 @@ function WTF.SanitizeDB(db)
     if WTF.SanitizeKeyLabels then
         db.keyLabels = WTF.SanitizeKeyLabels(db.keyLabels)
     end
+    if WTF.SanitizeDiagnostics then
+        db.diagnostics = WTF.SanitizeDiagnostics(db.diagnostics)
+    end
     db.locked = db.locked ~= false
     db.grid = db.grid ~= false
     db.stones.locked = db.locked
@@ -837,7 +842,9 @@ local function LoadAccountDB(saved)
     if type(engine.ticksImported) ~= "table" then
         engine.ticksImported = nil
     end
-    return {engine = engine}
+    -- Grimoire 0.2.1: the background diagnostics' counts (Probe.lua).
+    local diagnostics = WTF.SanitizeDiagnosticsRecord and WTF.SanitizeDiagnosticsRecord(saved.diagnostics) or nil
+    return {engine = engine, diagnostics = diagnostics}
 end
 
 local function LoadDB()
@@ -905,6 +912,7 @@ events:SetScript("OnEvent", function(self, event, loadedName)
     WTF.ShieldDisplay.Initialize({settings = function() return WTF.db.shield end, report = WTF.Report,
         unlockHint = "Drag to move. /grim lock when done", missingSounds = function() end})
     WTF.InitializeProbe()
+    WTF.StartDiagnostics()
     WTF.InitializeOptions()
     WTF.RefreshGrid()
 end)
