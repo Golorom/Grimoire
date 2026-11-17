@@ -1121,6 +1121,7 @@ local function fixture(options)
         local button = env.CreateFrame("CheckButton", "ActionButton" .. index, env.UIParent,
             "SecureActionButtonTemplate")
         button.action = index
+        button.HotKey = button:CreateFontString(nil, "ARTWORK")
     end
     env.GetActionInfo = function(slot)
         local action = state.actions[slot]
@@ -3390,7 +3391,7 @@ test("the Control page explains how Fear, Banish, and your focus work", function
     contains(state.messages[4], "\"! Banish\" works the same way")
     contains(state.messages[5], "Where the game has no focus (Classic Era), the macros fear or banish the mob "
         .. "under your mouse, else your target")
-    local macros = initializerFor(page, "GRIMOIRE_CONTROL_MACROS")
+    local macros = initializerFor(state.categories["Action Bars"], "GRIMOIRE_CONTROL_MACROS")
     contains(macros.tooltip, "\"! Fear\" makes the mob under your mouse (else your target) your focus and fears it")
     contains(macros.tooltip, "The Focus box above the Control bar shows your focus's Fear")
     equal(macros.tooltip:find("moon", 1, true), nil, "Grimoire: no marker")
@@ -5004,7 +5005,7 @@ test("the DoTs page keeps what the tracker does; its look is in each part's Edit
     for _, heading in ipairs(page.headings) do
         if heading.heading then names[#names + 1] = heading.heading end
     end
-    equal(table.concat(names, ","), "Nameplate dots,Curse slot,DoT damage prediction,Recast cue,Focus DoT macros")
+    equal(table.concat(names, ","), "Nameplate dots,Curse slot,DoT damage prediction,Recast cue")
     for _, initializer in ipairs(page.initializers) do
         local variable = initializer.setting and initializer.setting.variable or ""
         for _, look in ipairs({"_THEME", "PANEL_COLOR", "TRACKER_OPACITY_", "OUTLINE_WIDTH", "_COMPACT_", "_BARS_",
@@ -5923,15 +5924,22 @@ test("the settings: a module switch each, then pages by topic", function()
         if state.categories[name].parent == main then order[#order + 1] = name end
     end
     equal(table.concat(order, ", "),
-        "Shards and Stones, DoTs, DoT Order and Colors, Control, Demon, Alerts, Diagnostics")
+        "Action Bars, Shards and Stones, DoTs, DoT Order and Colors, Control, Armor and Demon, Alerts, Diagnostics")
     equal(state.categories.Stones, nil, "stones share the shards' page")
     equal(state.categories.Announce, nil, "Grimoire: no Announce page")
     local demon = {}
-    for _, initializer in ipairs(state.categories.Demon.initializers) do
+    for _, initializer in ipairs(state.categories["Armor and Demon"].initializers) do
         demon[#demon + 1] = initializer.setting.variable
     end
-    equal(table.concat(demon, ","),
-        "GRIMOIRE_REMIND_DEMON,GRIMOIRE_PET_DIED,GRIMOIRE_PET_TAUNT,GRIMOIRE_HOTBAR_DEMON,GRIMOIRE_PET_KEY_LABELS")
+    equal(table.concat(demon, ","), "GRIMOIRE_REMIND_ARMOR,GRIMOIRE_REMIND_DEMON,GRIMOIRE_REMIND_ICONS,"
+        .. "GRIMOIRE_REMIND_GLOW,GRIMOIRE_PET_DIED,GRIMOIRE_THREAT_PET_LOST,GRIMOIRE_PET_TAUNT")
+    local bars = {}
+    for _, initializer in ipairs(state.categories["Action Bars"].initializers) do
+        bars[#bars + 1] = initializer.setting.variable:gsub("GRIMOIRE_", "")
+    end
+    equal(table.concat(bars, ","), "HOTBAR_STONES,HOTBAR_ARMOR,HOTBAR_DEMON,HOTBAR_RECAST,HOTBAR_NIGHTFALL,"
+        .. "HOTBAR_PREP,STONES_MACROS,CONTROL_MACROS,FOCUS_MACROS,PREP_MACRO,PET_KEY_LABELS",
+        "glows, then macros, then the pet bar")
     for _, gone in ipairs({"Shield", "Cooldown Chimes", "Demon Armor"}) do
         equal(state.categories[gone], nil, "no page pointing to another AddOn: " .. gone)
     end
@@ -7227,6 +7235,10 @@ test("action bars: a DoT due on your target glows; a focus macro glows for your 
     state.recastTick()
     equal(state.cues(), "corruption")
     equal(glows(state), "ActionButton1", "Corruption on the bar, for your target")
+    local mark = state.env.ActionButton2.grimoireFocusMark
+    equal(mark.shown, true, "an F on the focus macro's button")
+    equal(mark.text.text, "F")
+    equal(state.env.ActionButton1.grimoireFocusMark, nil, "none on the plain spell")
     state.units.focus = state.units.target
     state.recastTick()
     equal(glows(state), "ActionButton1,ActionButton2", "and the focus macro, for your focus")
@@ -7680,6 +7692,28 @@ test("reminders: the icons can be hidden; a missing armor still glows on your ac
     equal(table.concat(state.wtf.HotbarGlows(), ","), "", "armor on: no glow")
 end)
 
+test("prep macro: the next missing step, armor before a stone; it glows while one is due", function()
+    local state = reminderFixture({known = {[6201] = true}, carried = {}, db = {hotbar = {prepMacro = true}},
+        actions = {[1] = {"macro", 1, nil, "! Prep"}}})
+    state.barsChanged()
+    equal(macroBody(state, "! Prep"), "#showtooltip Summon Imp\n/cast Summon Imp", "your demon first")
+    equal(table.concat(state.wtf.HotbarGlows(), ","), "ActionButton1")
+    state.units.pet = {name = "Imp", guid = "Pet-1"}
+    state.emit("UNIT_PET", "player")
+    settle(state)
+    equal(macroBody(state, "! Prep"), "#showtooltip Demon Skin\n/cast Demon Skin", "then your armor")
+    state.buffs = {["Demon Skin"] = {name = "Demon Skin", spellId = 687, expirationTime = state.now + 600}}
+    state.emit("UNIT_AURA", "player")
+    settle(state)
+    equal(macroBody(state, "! Prep"), "#showtooltip", "armor on, no shard for a stone: nothing to do")
+    equal(table.concat(state.wtf.HotbarGlows(), ","), "", "no glow")
+    state.fill(1)
+    contains(macroBody(state, "! Prep"), "/cast Create Healthstone", "a shard and no Healthstone: make one")
+    state.settings.GRIMOIRE_PREP_MACRO:SetValue(false)
+    equal(macroBody(state, "! Prep"), nil, "off deletes it")
+    equal(fixture().wtf.db.hotbar.prepMacro, false, "off by default")
+end)
+
 test("reminders: the icons glow while they show for real, not as Edit Mode's samples", function()
     local state = reminderFixture()
     local armor = state.env.GrimoireReminderArmor
@@ -7843,6 +7877,67 @@ test("threat: in a group, a held mob warns as you pass it, and in red with a sou
     equal(state.sounds[#state.sounds].kit, 8959)
 end)
 
+test("threat: in a group, the warning comes at your percent, once per climb, never after the mob turned", function()
+    local state = threatFixture({group = "party"})
+    state.percent = {}
+    state.env.UnitDetailedThreatSituation = function(_, unit)
+        local data = state.units[unit]
+        return false, data and state.threat[data.guid], data and state.percent[data.guid], 0, 0
+    end
+    state.combat = true
+    local before = #state.wtf.AlertHistory()
+    local function at(status, percent)
+        state.threat["Creature-1"], state.percent["Creature-1"] = status, percent
+        state.emit("UNIT_THREAT_LIST_UPDATE", "target")
+        return alertsFrom(state, "threat", before)
+    end
+    equal(#at(0, 50), 0, "your Voidwalker holds it, you are at half")
+    local lines = at(0, 85)
+    equal(#lines, 1)
+    equal(lines[1].text, "Careful: 85% threat on Boar.", "at 80% by default")
+    equal(#at(1, 95), 1, "once per climb")
+    lines = at(3, 100)
+    equal(lines[#lines].text, "Aggro! Boar is on you.")
+    equal(#at(0, 90), 2, "no warning after it turned to you")
+    at(0, 60)
+    state.now = state.now + 5
+    equal(#at(0, 82), 3, "well below, then up again: once more")
+    equal(state.wtf.db.threat.riskAt, 80)
+    equal(threatFixture({db = {threat = {riskAt = 300}}}).wtf.db.threat.riskAt, 100, "repaired on load")
+end)
+test("threat: your demon losing a mob to someone else says so; to you, only the aggro line", function()
+    local state = threatFixture()
+    state.units.pet = {name = "Vw", guid = "Pet-1"}
+    state.petThreat = {}
+    state.env.UnitThreatSituation = function(who, unit)
+        local data = state.units[unit]
+        if not data then return nil end
+        if who == "pet" then return state.petThreat[data.guid] end
+        return state.threat[data.guid]
+    end
+    state.combat = true
+    local before = #state.wtf.AlertHistory()
+    state.threat["Creature-1"], state.petThreat["Creature-1"] = 0, 3
+    state.emit("UNIT_THREAT_LIST_UPDATE", "target")
+    equal(#alertsFrom(state, "threat", before), 0, "your demon holds it")
+    state.petThreat["Creature-1"] = 0
+    state.emit("UNIT_THREAT_LIST_UPDATE", "target")
+    local lines = alertsFrom(state, "threat", before)
+    equal(#lines, 1)
+    equal(lines[1].text, "Your demon lost Boar.")
+    equal(lines[1].level, "warn")
+    -- Again, and this time it turns to you: only the aggro line.
+    state.combat = false
+    state.emit("PLAYER_REGEN_ENABLED")
+    state.combat = true
+    state.threat["Creature-1"], state.petThreat["Creature-1"] = 0, 3
+    state.emit("UNIT_THREAT_LIST_UPDATE", "target")
+    state.threat["Creature-1"], state.petThreat["Creature-1"] = 3, 1
+    state.emit("UNIT_THREAT_LIST_UPDATE", "target")
+    lines = alertsFrom(state, "threat", before)
+    equal(lines[#lines].text, "Aggro! Boar is on you.")
+    equal(#lines, 2, "no lost line with it")
+end)
 test("threat: a mob you pull yourself never warns; a secret answer is skipped", function()
     local state = threatFixture()
     state.combat = true
@@ -8620,15 +8715,20 @@ test("diagnostics: once per login, which probed functions this client has", func
     equal(facts["enum.auraSound.Removed@idle.world"].sample, "1")
     equal(facts["imbue.mainHand@idle.world"].sample, "false")
     equal(facts["pet.healthPercent@idle.world"].readable, 1)
-    equal(facts["carryOver.spell@idle.world"], nil, "not in this client")
-    -- A function that refuses its arguments says how it wants them.
-    local usage = diagnosticsFixture({prepareEnv = true})
-    usage.env.C_UnitAuras.GetRefreshCarryOverDuration = function()
-        error("bad argument #1 (Usage: local seconds = C_UnitAuras.GetRefreshCarryOverDuration(unit, auraInstanceID))", 0)
+    equal(facts["carryOver.spell@idle.world"], nil, "the carry-over probe is gone (it needs an aura instance)")
+    -- Weapon imbues: the slot-16 read, the legacy read, and a stone's buff by name.
+    local imbue = diagnosticsFixture({prepareEnv = true})
+    imbue.env.C_Item.GetWeaponEnchantInfo = function(slot)
+        if slot ~= 16 then error("bad argument #1 (Usage: C_Item.GetWeaponEnchantInfo(weaponSlot))", 0) end
+        return {enchantID = 7, expiration = 3600}
     end
-    passTime(usage, 10)
-    contains(diagnosticFacts(usage)["carryOver.spell@idle.world"].sample, "GetRefreshCarryOverDuration(unit, auraInstanceID)",
-        "the whole usage line is kept")
+    imbue.env.GetWeaponEnchantInfo = function() return true, 3540000, 0, 2684, false end
+    imbue.buffList = {{name = "Arcane Intellect", spellId = 1459}, {name = "Spellstone", spellId = 1234}}
+    passTime(imbue, 10)
+    local imbueFacts = diagnosticFacts(imbue)
+    equal(imbueFacts["imbue.mainHand@idle.world"].sample, "{enchantID=7 expiration=3600}")
+    equal(imbueFacts["imbue.legacy@idle.world"].sample, "true,3540000,0,2684,false")
+    equal(imbueFacts["imbue.aura@idle.world"].sample, "Spellstone 1234")
 end)
 
 test("reminders: Forever's Summon Incubus, found by name, counts as your last demon", function()

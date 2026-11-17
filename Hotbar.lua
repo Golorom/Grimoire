@@ -26,7 +26,7 @@ local SHADOW_BOLT = 686
 local NIGHTFALL_GLOWS = 6
 -- Which switch each kind of want belongs to.
 local SWITCH = {healthstone = "stones", soulstone = "stones", armor = "armor", summon = "demon", dot = "recast",
-    focus = "recast"}
+    focus = "recast", prep = "prep"}
 local MAP_JOB = {}
 
 local hotbar = {keysOf = {}, wants = {}, glowing = {}, proxies = {}}
@@ -34,10 +34,11 @@ local hotbar = {keysOf = {}, wants = {}, glowing = {}, proxies = {}}
 function WTF.SanitizeHotbar(saved)
     saved = type(saved) == "table" and saved or {}
     local clean = {}
-    for _, key in ipairs({"stones", "armor", "demon", "recast", "nightfall"}) do
+    for _, key in ipairs({"stones", "armor", "demon", "recast", "nightfall", "prep"}) do
         clean[key] = saved[key] ~= false
     end
     clean.focusMacros = saved.focusMacros == true
+    clean.prepMacro = saved.prepMacro == true
     return clean
 end
 
@@ -107,6 +108,10 @@ local function KeysOf(slot)
         end
     elseif kind == "macro" then
         local name = type(GetActionText) == "function" and GetActionText(slot) or nil
+        if name == WTF.PREP_MACRO then
+            keys.prep = true
+            return keys
+        end
         local focus = name and WTF.FocusMacroFamily and WTF.FocusMacroFamily(name)
         if focus then
             -- A focus macro glows for the focus only.
@@ -176,6 +181,41 @@ local function PlaceNightfall(bolts)
     end
 end
 
+-- 0.3.8: a small red F on a button that holds a focus macro, so it reads
+-- apart from the same spell for your target. A plain frame on the button.
+local FOCUS_RED = {1, 0.25, 0.2}
+
+local function FocusMark(button, shown)
+    local mark = button.grimoireFocusMark
+    if not mark and shown then
+        mark = CreateFrame("Frame", nil, button)
+        mark:SetAllPoints(button)
+        mark:EnableMouse(false)
+        mark:SetFrameLevel(math.min(button:GetFrameLevel() + 5, 10000))
+        mark.text = mark:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        mark.text:SetPoint("TOPLEFT", mark, "TOPLEFT", 2, -2)
+        local font, size = mark.text:GetFont()
+        if font then
+            mark.text:SetFont(font, size, "OUTLINE")
+        end
+        mark.text:SetTextColor(FOCUS_RED[1], FOCUS_RED[2], FOCUS_RED[3])
+        mark.text:SetText("F")
+        button.grimoireFocusMark = mark
+    end
+    if mark then
+        mark:SetShown(shown)
+    end
+end
+
+local function IsFocus(keys)
+    for key in pairs(keys) do
+        if key:match("^focus:") then
+            return true
+        end
+    end
+    return false
+end
+
 -- Out of combat: which button holds what. Glows are made here, so a glow
 -- that turns on in combat already has its frame.
 local function Map()
@@ -200,6 +240,9 @@ local function Map()
             WTF.SetGlow(button.grimoireGlow, false)
             hotbar.glowing[button] = nil
         end
+    end
+    for _, button in ipairs(Buttons()) do
+        FocusMark(button, keysOf[button] ~= nil and IsFocus(keysOf[button]))
     end
     hotbar.keysOf = keysOf
     hotbar.bolts = bolts
@@ -329,6 +372,72 @@ function WTF.ApplyFocusMacros()
     end
 end
 
+-- The prep macro (0.3.8, a choice, off by default): "! Prep" does the next
+-- missing step before a pull: summon your demon, then your armor, then a
+-- Healthstone, then a Soulstone, each only when you carry none and can make
+-- one. Rewritten out of combat as things change; it glows while a step is
+-- due. With nothing to do, a press does nothing.
+WTF.PREP_MACRO = "! Prep"
+local PREP_ORDER = {"demon", "armor", "healthstone", "soulstone"}
+local prep = {steps = {}}
+local PREP_JOB = {}
+
+function WTF.PrepMacroBody(spell)
+    if not spell then
+        return "#showtooltip"
+    end
+    return "#showtooltip " .. spell .. "\n/cast " .. spell
+end
+
+local function NextStep()
+    for _, step in ipairs(PREP_ORDER) do
+        if prep.steps[step] then
+            return step, prep.steps[step]
+        end
+    end
+end
+
+local function WritePrepMacro()
+    if not (WTF.CharacterMacrosAvailable and WTF.CharacterMacrosAvailable()) then
+        return
+    end
+    if not WTF.db.hotbar.prepMacro then
+        WTF.DeleteCharacterMacro(WTF.PREP_MACRO)
+        prep.written = nil
+        return
+    end
+    local _, spell = NextStep()
+    local body = WTF.PrepMacroBody(spell)
+    if body ~= prep.written then
+        WTF.WriteCharacterMacro(WTF.PREP_MACRO, body)
+        prep.written = body
+    end
+end
+
+function WTF.ApplyPrepMacro()
+    if WTF.shared then
+        WTF.shared.OutOfCombat(PREP_JOB, WritePrepMacro)
+    elseif not InCombatLockdown() then
+        WritePrepMacro()
+    end
+end
+
+-- A step and the spell that does it, or nil when it is not due.
+function WTF.SetPrepStep(step, spell)
+    if prep.steps[step] == spell then
+        return
+    end
+    prep.steps[step] = spell
+    WTF.SetHotbarWant("prep", NextStep() ~= nil)
+    if WTF.db.hotbar.prepMacro then
+        WTF.ApplyPrepMacro()
+    end
+end
+
+function WTF.PrepStep()
+    return NextStep()
+end
+
 local function CreateNightfallGlows()
     if not (WTF.AuraEngineKind and WTF.AuraEngineKind()) or not WTF.NightfallIDs then
         return
@@ -370,6 +479,7 @@ function WTF.InitializeHotbar()
     events:SetScript("OnEvent", function(_, event)
         if event == "SPELLS_CHANGED" or event == "PLAYER_ENTERING_WORLD" then
             WTF.ApplyFocusMacros()
+            WTF.ApplyPrepMacro()
         end
         -- Bursts of slot changes: one map shortly after, out of combat.
         if hotbar.pending then

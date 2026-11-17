@@ -602,6 +602,8 @@ local function SampleRestrictions()
     end)
 end
 
+local SampleImbue
+
 local function Sample()
     local hostile = false
     Try("target", function() hostile = HostileTarget() end)
@@ -698,8 +700,68 @@ local function Sample()
     end)
 end
 
+-- 0.3.8: what the game tells about weapon imbues, for a Firestone and
+-- Spellstone reminder. On Forever they are used on your weapon and stack
+-- with oils, so which read shows them is not known yet. Out of combat, at
+-- login and after each fight: the slot-16 read (it wants a weapon slot), the
+-- legacy read, and a Firestone or Spellstone buff on you by name.
+local IMBUE_NAMES = {"Firestone", "Spellstone"}
+
+local function Values(...)
+    local parts = {}
+    for index = 1, select("#", ...) do
+        local value = select(index, ...)
+        if WTF.IsSecret(value) then
+            parts[#parts + 1] = "secret"
+        elseif type(value) == "table" then
+            local keys = {}
+            for key, field in pairs(value) do
+                keys[#keys + 1] = tostring(key) .. "=" .. (WTF.IsSecret(field) and "secret" or tostring(field))
+            end
+            table.sort(keys)
+            parts[#parts + 1] = "{" .. table.concat(keys, " ") .. "}"
+        else
+            parts[#parts + 1] = tostring(value)
+        end
+    end
+    return table.concat(parts, ",")
+end
+
+SampleImbue = function()
+    Try("imbue.mainHand", function()
+        if type(C_Item) == "table" and type(C_Item.GetWeaponEnchantInfo) == "function" then
+            Add("imbue.mainHand", "readable", Values(C_Item.GetWeaponEnchantInfo(16)))
+        end
+    end)
+    Try("imbue.legacy", function()
+        local read = rawget(_G, "GetWeaponEnchantInfo")
+        if type(read) == "function" then
+            Add("imbue.legacy", "readable", Values(read()))
+        end
+    end)
+    Try("imbue.aura", function()
+        if type(C_UnitAuras) ~= "table" or type(C_UnitAuras.GetAuraDataByIndex) ~= "function" then
+            return
+        end
+        for index = 1, 40 do
+            local aura = C_UnitAuras.GetAuraDataByIndex("player", index, "HELPFUL")
+            if type(aura) ~= "table" then
+                return
+            end
+            local name = aura.name
+            if not WTF.IsSecret(name) and type(name) == "string" then
+                for _, wanted in ipairs(IMBUE_NAMES) do
+                    if name:find(wanted, 1, true) then
+                        Add("imbue.aura", "readable", name .. " " .. tostring(aura.spellId))
+                    end
+                end
+            end
+        end
+    end)
+end
+
 -- Once per login: which of the probed functions exist, the aura sound
--- triggers by name, and what the weapon imbue read answers.
+-- triggers by name, and what the weapon imbue reads answer.
 local function SampleClient()
     for _, path in ipairs(API_PROBES) do
         local name = table.concat(path, ".")
@@ -725,19 +787,7 @@ local function SampleClient()
             Add("enum.auraSound." .. tostring(name), "readable", tostring(value))
         end
     end)
-    -- 0.2.3: the client has this function; what it takes and gives is not
-    -- documented. Called with a Corruption rank, its answer or its usage
-    -- error says which.
-    Try("carryOver.spell", function()
-        if type(C_UnitAuras) == "table" and type(C_UnitAuras.GetRefreshCarryOverDuration) == "function" then
-            Note("carryOver.spell", (C_UnitAuras.GetRefreshCarryOverDuration(172)))
-        end
-    end)
-    Try("imbue.mainHand", function()
-        if type(C_Item) == "table" and type(C_Item.GetWeaponEnchantInfo) == "function" then
-            Note("imbue.mainHand", (C_Item.GetWeaponEnchantInfo()))
-        end
-    end)
+    SampleImbue()
 end
 
 local function SampleCooldown(spellID)
@@ -784,6 +834,7 @@ local function OnRecorderEvent(_, event, _, _, spellID)
         C_Timer.After(AFTER_COMBAT, function()
             if generation == recorder.generation and not InCombatLockdown() and Enabled() then
                 Sample()
+                SampleImbue()
             end
         end)
     elseif event == "UNIT_SPELLCAST_SUCCEEDED" then

@@ -803,6 +803,9 @@ UpdateGlow = function()
     if WTF.SetHotbarWant then
         WTF.SetHotbarWant("soulstone", soul == true)
         WTF.SetHotbarWant("healthstone", health == true)
+        -- 0.3.8: the prep macro makes the stone you carry none of.
+        WTF.SetPrepStep("healthstone", health and CastName(healthRank.spell) or nil)
+        WTF.SetPrepStep("soulstone", soul and C_Spell.GetSpellName(soulRank.spell) or nil)
     end
     local on = settings.shown and settings.glow
     soul, health = on and soul, on and health

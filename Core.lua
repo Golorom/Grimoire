@@ -140,7 +140,7 @@ local REQUIRED_NAMESPACE = {
     "SanitizeReminders", "InitializeReminders", "RefreshReminders", "ResetRemindersPosition",
     "SanitizeStrip", "InitializeStrip", "StripActive", "JoinStrip", "RefreshStrip", "ResetStripPosition",
     "SanitizeHotbar", "InitializeHotbar", "RefreshHotbar", "SetHotbarGroup", "SetHotbarWant", "ReportHotbarDebug",
-    "ApplyFocusMacros", "StoneOfAction", "RecastFamilyOf", "NightfallIDs",
+    "ApplyFocusMacros", "StoneOfAction", "RecastFamilyOf", "NightfallIDs", "SetPrepStep", "ApplyPrepMacro",
     "SanitizeThreat", "InitializeThreat", "SanitizePet", "InitializePet", "RefreshPetTaunt",
     "QuietTime", "ForgetAlerts",
     "SanitizeProcs", "InitializeProcs", "RefreshProcs", "ResetProcsPosition",

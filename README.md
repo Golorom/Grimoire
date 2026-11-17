@@ -14,14 +14,15 @@ This is the main difference from Dyre's addon. Your own action bars are the cont
 - A missing Demon Armor or Demon Skin
 - Your demon's summon while none is out
 - A DoT on your target when it is time to recast it
-- A DoT on your focus, on the focus DoT macros (`! Corruption F` and the others)
+- A DoT on your focus, on the focus DoT macros (`! Corruption F` and the others), marked with a red F
+- `! Prep` while a step before a pull is due: your demon, your armor, a stone you carry none of
 - Shadow Bolt during Nightfall (not yet tested in game)
 
 With the glows, Grimoire's own Stones bar, shard counter and reminder icons can be turned off for a clean screen.
 
 To set it up
 1. Put your DoTs, armor and demon summon on your bars.
-2. Put the `! Healthstone` and `! Soulstone` macros there. A press uses your best stone, or makes one when you carry none, so a key works as well as a click. Turn on focus DoT macros on the DoTs page if you use a focus, and put those on your bars too.
+2. Put the `! Healthstone` and `! Soulstone` macros there. A press uses your best stone, or makes one when you carry none. On the Action Bars settings page, turn on the focus DoT macros and `! Prep` if you want them, and put those on your bars too.
 3. Turn off the Stones bar, the shard counter and the reminder icons if you do not need them.
 
 ## Customizing
@@ -52,8 +53,8 @@ One action reaches another player, and only on your click: a left-click on the H
 - **Control bar.** Timers for the mobs you Fear or Banish, with `! Fear`, `! Banish`, `! Seduction` and `! Curse` macros kept up to date in your macro list.
 - **Alert window.** Short lines in a window of their own: centered text, no backdrop by default.
 - **Reminders.** Glowing click-to-cast icons for a missing Demon Armor or Demon Skin and a missing demon. Row or column, size, spacing and background are set in Edit Mode, as for the Stones bar. Their lines back off (at once, then 2, 5, then every 15 minutes) and stay quiet while you are dead, on a flight path or resting.
-- **Threat warning.** A line when a mob your Voidwalker or a tank held turns to you: red with a sound in a group, yellow and silent alone.
-- **Demon warnings.** Your demon died; Enslave Demon broke; your demon's taunt is on autocast in a group.
+- **Threat warning.** A line when a mob your Voidwalker or a tank held turns to you: red with a sound in a group, yellow and silent alone. In a group, a line when your threat reaches a percent you set.
+- **Demon warnings.** Your demon died, lost a mob to someone else, or broke free of Enslave Demon. Your demon's taunt is on autocast in a group.
 - **Nightfall.** A sound and an icon when Shadow Trance procs, and a glow on Shadow Bolt (not yet tested in game).
 - **Cooldown alerts.** A line just before a chosen spell is ready, timed from your own cast.
 - **Shield display.** A gold-rimmed arc for Sacrifice and other absorbs, to the right, left, top or bottom of your character, or gold-rimmed rows or columns with the number under, left or right. Set in Edit Mode.

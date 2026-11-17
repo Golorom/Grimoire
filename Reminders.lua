@@ -208,6 +208,7 @@ local function Apply()
     WTF.SetGlow(armorButton.glow, settings.glow and settings.icons and missing and not unlocked)
     if WTF.SetHotbarWant then
         WTF.SetHotbarWant("armor", missing and not unlocked)
+        WTF.SetPrepStep("armor", missing and not unlocked and armorName or nil)
     end
     -- No lines right after login, while mounted, or while they cannot help
     -- (dead, on a flight path, resting in a city): the icon still shows.
@@ -232,8 +233,9 @@ local function Apply()
     -- 0.3.6: your demon's summon glows on your action bars while none is out
     -- (checked out of combat).
     if WTF.SetHotbarGroup then
-        WTF.SetHotbarGroup("demon", (wanted and not unlocked and not HasLiveDemon()) and {["summon:" .. summon] = true}
-            or {})
+        local due = wanted and not unlocked and not HasLiveDemon()
+        WTF.SetHotbarGroup("demon", due and {["summon:" .. summon] = true} or {})
+        WTF.SetPrepStep("demon", due and summon or nil)
     end
     if not wanted or HasLiveDemon() then
         Settle("demon")

@@ -1,10 +1,26 @@
 # Changelog
 
+## 0.3.8 (2026-11-17)
+
+Added
+- Focus macro buttons show a red F.
+- `! Prep` macro, off by default: summons your demon, then casts your armor, then makes a Healthstone or Soulstone you carry none of.
+- Threat warning at a percent you set, 80 by default.
+- Demon lost a mob: a line when a mob your demon held goes to someone else.
+- Settings page Action Bars with all glows and macros.
+
+Changed
+- Settings pages: Action Bars, Shards and Stones, DoTs, DoT Order and Colors, Control, Armor and Demon, Alerts, Diagnostics.
+- Diagnostics read weapon imbues, for a Firestone and Spellstone reminder later.
+
+Removed
+- Diagnostics check for refresh carry-over.
+
 ## 0.3.7 (2026-11-17)
 
 Changed
-- The `! Healthstone` and `! Soulstone` macros make a stone on any press while you carry none, so a key works as well as a click. While you carry one, a press uses it and a right-click makes one, as before. The macro changes out of combat only, so using your last stone in combat never starts a cast.
-- README: why the fork exists, play from your action bars, customizing. Wrack and the Shadow Bolt glow marked as not yet tested in game.
+- `! Healthstone` and `! Soulstone` make a stone when you carry none.
+- README rewritten: fork reason, play from your action bars, customizing.
 
 ## 0.3.6 (2026-11-17)
 
