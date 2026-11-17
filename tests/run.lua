@@ -35,7 +35,7 @@ local TOOLKIT_FILES = {"Engine/Shim.lua", "Engine/Auras.lua", "Engine/Units.lua"
     "Engine/Spells.lua", "Engine/Macros.lua", "Engine/Announce.lua", "Engine/ClassData.lua", "Engine/Owners.lua",
     "Engine/Control.lua", "Engine/DotTracker.lua", "Engine/PlateDots.lua", "Engine/DotPredict.lua"}
 local TOOLKIT_DIR = ""
-local RUNTIME_FILES = {"Commands.lua", "Core.lua", "EditMode.lua", "Glow.lua", "Shards.lua", "Stones.lua", "Tracker.lua",
+local RUNTIME_FILES = {"Commands.lua", "Core.lua", "EditMode.lua", "Glow.lua", "Strip.lua", "Shards.lua", "Stones.lua", "Tracker.lua",
     "Dots.lua", "Predict.lua", "Recast.lua", "Control.lua", "Alerts.lua", "Reminders.lua", "Threat.lua", "Pet.lua", "Procs.lua",
     "Cooldowns.lua", "KeyLabels.lua", "Shield.lua", "Probe.lua", "Options.lua"}
 local SHARD = 6265
@@ -769,6 +769,8 @@ local function fixture(options)
             local category = {name = name, parent = parent, initializers = {}}
             function category:GetID() return "id:" .. name end
             state.categories[name] = category
+            state.categoryOrder = state.categoryOrder or {}
+            state.categoryOrder[#state.categoryOrder + 1] = name
             return category
         end
         local function initializer(category, setting, extra)
@@ -932,7 +934,13 @@ local function fixture(options)
             return x / scale, y / scale
         end
         function object:SetFrameLevel(level) self.level = level end
-        function object:SetParent(newParent) self.parent = newParent end
+        function object:SetParent(newParent)
+            if state.combat and self.protected then error("SetParent in combat") end
+            self.parent = newParent
+            -- A frame with secure children is protected too.
+            if self.protected and newParent then newParent.protected = true end
+        end
+        function object:GetParent() return self.parent end
         function object:IsForbidden() return self.forbidden == true end
         function object:CreateMaskTexture() return widget("MaskTexture", nil, self) end
         function object:GetFrameLevel() return self.level or 1 end
@@ -1199,6 +1207,17 @@ local function fixture(options)
     -- before Grimoire's files. options.noEditMode: a client without it.
     state.editModeFrames = {}
     local editModeCallbacks = {enter = {}, exit = {}}
+    -- The client's ColorMixin, as CreateColor makes it, for Edit Mode color pickers.
+    env.CreateColor = env.CreateColor or function(r, g, b, a)
+        local color = {r = r, g = g, b = b, a = a or 1}
+        function color:GetRGB() return self.r, self.g, self.b end
+        function color:GetRGBA() return self.r, self.g, self.b, self.a end
+        return color
+    end
+    function state.color(hex)
+        return env.CreateColor(tonumber(hex:sub(3, 4), 16) / 255, tonumber(hex:sub(5, 6), 16) / 255,
+            tonumber(hex:sub(7, 8), 16) / 255)
+    end
     if not options.noEditMode then
         env.C_EditMode = env.C_EditMode or {}
         state.wtf.LibEditMode = {
@@ -1255,6 +1274,19 @@ local function fixture(options)
         for _, setting in ipairs(state.editModeEntry(frame).settings or {}) do
             if setting.name == name then return setting end
         end
+    end
+    -- The dialog's "Reset to Default Settings", as LibEditMode does it: each
+    -- setting set to its default, in order.
+    function state.resetEditModeSettings(frame)
+        for _, setting in ipairs(state.editModeEntry(frame).settings or {}) do
+            if setting.set then setting.set("Modern", setting.default, true) end
+        end
+    end
+    -- A change in a frame's Edit Mode dialog (0.3.5: where the look settings live).
+    function state.look(frame, name, value)
+        local setting = state.editModeSetting(frame, name)
+        if not setting then error("no Edit Mode setting " .. name .. " on " .. tostring(frame:GetName())) end
+        setting.set("Modern", value)
     end
     -- A frame moved in Edit Mode, as LibEditMode does it: anchored to its
     -- parent at a point, then the callback.
@@ -3146,7 +3178,7 @@ test("a size change in combat waits for combat, so rows stay on their click slot
     local state = controlFixture()
     castAt(state, FEAR, "nameplate3")
     state.combat = true
-    state.settings.GRIMOIRE_CONTROL_SCALE:SetValue(80)
+    state.look(state.env.GrimoireControl, "Size", 80)
     equal(controlRow(state, 1).scale, 1, "unchanged in combat")
     equal(state.env.GrimoireControl.scale, 1)
     state.combat = false
@@ -3323,12 +3355,10 @@ test("the Control page explains how Fear, Banish, and your focus work", function
 end)
 test("size sliders are labeled without (%): their values show the % sign", function()
     local state = fixture()
-    for _, case in ipairs({{"Control", "GRIMOIRE_CONTROL_SCALE", "Bar size"}}) do
-        local slider = initializerFor(state.categories[case[1]], case[2])
-        equal(slider.setting.name, case[3])
-        equal(slider.options.label, "right")
-        equal(slider.options.formatter(80), "80%", case[3] .. ": the value shows its % sign")
-    end
+    local slider = initializerFor(state.categories.DoTs, "GRIMOIRE_PREDICT_OPACITY")
+    equal(slider.setting.name, "Block opacity")
+    equal(slider.options.label, "right")
+    equal(slider.options.formatter(80), "80%", "the value shows its % sign")
     for _, category in pairs(state.categories) do
         for _, initializer in ipairs(category.initializers) do
             local name = initializer.setting and initializer.setting.name
@@ -3487,7 +3517,7 @@ test("a frame's size change keeps its center and saves the place", function()
     local bar = state.env.GrimoireStones
     state.moveInEditMode(bar, "CENTER", 0, 0)
     local beforeX, beforeY = state.absCenter(bar)
-    state.settings.GRIMOIRE_STONES_SCALE:SetValue(150)
+    state.look(bar, "Size", 150)
     local afterX, afterY = state.absCenter(bar)
     equal(math.floor(afterX + 0.5), math.floor(beforeX + 0.5), "same center")
     equal(math.floor(afterY + 0.5), math.floor(beforeY + 0.5))
@@ -3519,7 +3549,7 @@ test("Stones bar: layout, size, spacing and background from its Edit Mode dialog
     equal(bar.backdrop, nil, "no panel")
     equal(state.editModeSetting(bar, "Background").get("Modern"), false)
     state.editModeSetting(bar, "Size").set("Modern", 120)
-    equal(state.wtf.db.stones.scale, 120, "the same setting as the settings page's")
+    equal(state.wtf.db.stones.scale, 120, "saved")
     -- In combat the secure buttons wait.
     state.combat = true
     layout.set("Modern", "horizontal")
@@ -3795,7 +3825,7 @@ test("the Stones bar size waits for combat to end and keeps the bar's center", f
     bar.protected = true -- its secure buttons make it protected in client
     local x, y = state.absCenter(bar)
     state.combat = true
-    state.settings.GRIMOIRE_STONES_SCALE:SetValue(70)
+    state.look(bar, "Size", 70)
     equal(state.wtf.db.stones.scale, 70, "saved at once")
     equal(bar:GetScale(), 1, "no change in combat")
     state.combat = false
@@ -3811,7 +3841,7 @@ test("the shard counter size changes at once, also in combat", function()
     local counter = state.wtf.shardCounter
     local x, y = state.absCenter(counter)
     state.combat = true
-    state.settings.GRIMOIRE_SHARDS_COUNTER_SCALE:SetValue(130)
+    state.look(counter, "Size", 130)
     equal(counter:GetScale(), 1.3)
     local newX, newY = state.absCenter(counter)
     equal(math.floor(newX + 0.5), math.floor(x + 0.5), "same center")
@@ -4845,7 +4875,7 @@ end
 
 -- The DoTs page, refreshed as when it shows, and its row for a slot.
 local function dotsPage(state)
-    local page = state.categories.DoTs.frame
+    local page = state.categories["DoT Order and Colors"].frame
     page:OnRefresh()
     return page
 end
@@ -4923,31 +4953,44 @@ test("saved colors and nameplate choices are repaired on load", function()
         equal(fresh.wtf.db.tracker.onPlates[slot.key], true, slot.key .. ": on nameplates by default")
     end
 end)
-test("the DoT Tracker page: General, then a section per panel with its color and opacity", function()
+test("the DoTs page keeps what the tracker does; its look is in each part's Edit Mode dialog", function()
     local state = trackerFixture()
-    local page = state.categories["DoT Tracker"]
-    local headings, names = {}, {}
+    local page = state.categories.DoTs
+    local names = {}
     for _, heading in ipairs(page.headings) do
-        if heading.heading then
-            headings[#headings + 1] = heading
-            names[#names + 1] = heading.heading
+        if heading.heading then names[#names + 1] = heading.heading end
+    end
+    equal(table.concat(names, ","), "Nameplate dots,Curse slot,DoT damage prediction,Recast cue")
+    for _, initializer in ipairs(page.initializers) do
+        local variable = initializer.setting and initializer.setting.variable or ""
+        for _, look in ipairs({"_THEME", "PANEL_COLOR", "TRACKER_OPACITY_", "OUTLINE_WIDTH", "_COMPACT_", "_BARS_",
+                "TRACKER_HEALTH"}) do
+            equal(variable:find(look, 1, true), nil, variable .. ": no look setting on the page")
         end
     end
-    equal(table.concat(names, ","), "General,Target,Focus,Others,Curse slot,DoT damage prediction,Recast cue")
-    equal(headings[1].position, 0, "General first")
-    equal(page.initializers[1].setting.variable, "GRIMOIRE_TRACKER_THEME", "the shared settings under General")
-    for index, case in ipairs({{"TARGET", "ff8787ed"}, {"FOCUS", "ffe61a1a"}, {"LIST", "ff545454"}}) do
-        local at = headings[index + 1].position
-        local color, opacity = page.initializers[at + 1], page.initializers[at + 2]
-        equal(color.setting.variable, "GRIMOIRE_PANEL_COLOR_" .. case[1], case[1] .. ": its color in its section")
-        equal(color.swatch, true)
-        equal(color.setting.default, case[2], case[1] .. ": the color before 1.2.0")
-        equal(opacity.setting.variable, "GRIMOIRE_TRACKER_OPACITY_" .. case[1], case[1] .. ": then its opacity")
-        local nextHeading = headings[index + 2]
-        equal(nextHeading and nextHeading.position or #page.initializers, at + 2, "nothing else in the section")
+    local function shownNames(frame)
+        local list = {}
+        for _, setting in ipairs(state.editModeEntry(frame).settings) do
+            if not (setting.hidden and setting.hidden()) then list[#list + 1] = setting.name end
+        end
+        return table.concat(list, ", ")
+    end
+    equal(shownNames(state.anchor),
+        "Theme, Style, Icon size, Name width, Text size, Name position, Outline, Show mob health, Color, Opacity")
+    equal(shownNames(state.list), "Theme, Style, Icon size, Name width, Text size, Name position, Show mob health, "
+        .. "Color, Opacity", "no outline on the other mobs' panel")
+    state.look(state.anchor, "Theme", "bars")
+    equal(shownNames(state.focusAnchor),
+        "Theme, Style, Bar width, Line height, Text size, Name position, Outline, Show mob health, Color, Opacity",
+        "the Bars theme's sizes, on every part")
+    state.look(state.anchor, "Show mob health", true)
+    equal(shownNames(state.list):find("Health text", 1, true) ~= nil, true, "health text with mob health")
+    for _, case in ipairs({{state.anchor, "ff8787ed"}, {state.focusAnchor, "ffe61a1a"}, {state.list, "ff545454"}}) do
+        local color = state.editModeSetting(case[1], "Color")
+        equal(color.kind, 10, "a color picker")
+        equal(state.wtf.RGBToHex(color.default:GetRGB()), case[2], "the color before 1.2.0")
     end
     equal(state.categories["DoT Colors"], nil, "no DoT Colors page")
-    equal(state.categories["DoT Order"], nil, "no DoT Order page")
 end)
 test("a panel color recolors its outline, border, and health fill at once, also in combat", function()
     local state = trackerFixture({db = {tracker = {health = true}}})
@@ -4955,9 +4998,9 @@ test("a panel color recolors its outline, border, and health fill at once, also 
     local list = shownRows(state)[1]
     near3(list.backdropBorder, 0x54 / 255, 0x54 / 255, 0x54 / 255, "the others' border: dark grey, not brown")
     state.combat = true
-    state.settings.GRIMOIRE_PANEL_COLOR_TARGET:SetValue("ff00ff00")
-    state.settings.GRIMOIRE_PANEL_COLOR_FOCUS:SetValue("ff0000ff")
-    state.settings.GRIMOIRE_PANEL_COLOR_LIST:SetValue("ffff0000")
+    state.look(state.env.GrimoireTracker, "Color", state.color("ff00ff00"))
+    state.look(state.env.GrimoireTrackerFocus, "Color", state.color("ff0000ff"))
+    state.look(state.env.GrimoireTrackerList, "Color", state.color("ffff0000"))
     equal(state.wtf.db.tracker.panelColors.target, "ff00ff00")
     local target, focus = pinnedRow(state, "target"), pinnedRow(state, "focus")
     near3(target.outline.backdropBorder, 0, 1, 0, "the target outline, in combat")
@@ -4974,8 +5017,36 @@ test("a panel color recolors its outline, border, and health fill at once, also 
     dot(state, 6222, "Wolf")
     near3(shownRows(state)[1].backdropBorder, 1, 0, 0, "rows built later take it too")
     near3(pinnedRow(state, "target").outline.backdropBorder, 0, 1, 0)
-    state.settings.GRIMOIRE_PANEL_COLOR_LIST:SetValue("red")
-    equal(state.wtf.db.tracker.panelColors.list, "ff545454", "an invalid value becomes the default")
+end)
+test("Control style: Dyre's borders by default; the gold rim on every row and the Focus box", function()
+    local state = controlFixture()
+    local bar = state.env.GrimoireControl
+    near3(controlRow(state, 1).backdropBorder, 0.45, 0.35, 0.2, "Dyre's dark gold")
+    local focus = state.env.GrimoireControlFocus.display
+    local red = focus.backdropBorder
+    state.combat = true
+    state.look(bar, "Style", "gold")
+    near3(controlRow(state, 1).backdropBorder, 1, 0.82, 0, "gold, at once, also in combat")
+    near3(focus.backdropBorder, 1, 0.82, 0, "the Focus box too")
+    state.look(bar, "Style", "dyre")
+    near3(focus.backdropBorder, red[1], red[2], red[3], "back to its red")
+    equal(controlFixture({db = {control = {style = 7}}}).wtf.db.control.style, "dyre", "repaired on load")
+end)
+test("tracker style: Dyre's by default; the gold rim colors every row's border, outlines keep theirs", function()
+    local state = trackerFixture()
+    dot(state, 6222, "Wolf")
+    local target, list = pinnedRow(state, "target"), shownRows(state)[1]
+    equal(state.wtf.db.tracker.style, "dyre")
+    near3(target.backdropBorder, 0x87 / 255, 0x87 / 255, 0xed / 255, "Dyre's: the panel's color")
+    state.combat = true
+    state.look(state.anchor, "Style", "gold")
+    near3(target.backdropBorder, 1, 0.82, 0, "gold, at once, also in combat")
+    near3(list.backdropBorder, 1, 0.82, 0, "the other mobs' rows too")
+    near3(target.outline.backdropBorder, 0x87 / 255, 0x87 / 255, 0xed / 255, "the target outline keeps its color")
+    state.combat = false
+    state.look(state.list, "Style", "dyre")
+    near3(list.backdropBorder, 0x54 / 255, 0x54 / 255, 0x54 / 255, "back to Dyre's")
+    equal(trackerFixture({db = {tracker = {style = "neon"}}}).wtf.db.tracker.style, "dyre", "repaired on load")
 end)
 test("saved panel colors are repaired on load", function()
     local state = trackerFixture({db = {tracker = {panelColors = {target = "FF112233", focus = 7}}}})
@@ -5170,7 +5241,7 @@ test("switching the theme rebuilds the rows and keeps the tracked mobs", functio
     local state = trackerFixture()
     dot(state, 172, "Wolf")
     local before = listRows(state)
-    state.settings.GRIMOIRE_TRACKER_THEME:SetValue("bars")
+    state.look(state.env.GrimoireTracker, "Theme", "bars")
     equal(state.wtf.db.tracker.theme, "bars")
     for _, row in ipairs(before) do equal(row.shown, false, "old rows hidden") end
     local rows = {}
@@ -5186,7 +5257,7 @@ test("a theme change in combat waits for combat to end", function()
     local state = trackerFixture()
     local before = state.targetRow
     state.combat = true
-    state.settings.GRIMOIRE_TRACKER_THEME:SetValue("bars")
+    state.look(state.env.GrimoireTracker, "Theme", "bars")
     equal(state.wtf.db.tracker.theme, "bars")
     equal(before.shown, true, "secure rows untouched in combat")
     state.combat = false
@@ -5227,16 +5298,16 @@ test("each DoT tracker panel has its own opacity, applied at once, also in comba
     for _, frame in ipairs({state.anchor, state.focusAnchor, state.list}) do
         equal(frame.alpha, 1, tostring(frame.name) .. ": solid by default")
     end
-    state.settings.GRIMOIRE_TRACKER_OPACITY_TARGET:SetValue(60)
+    state.look(state.env.GrimoireTracker, "Opacity", 60)
     equal(state.anchor.alpha, 0.6, "the target panel")
     equal(state.focusAnchor.alpha, 1, "the others stay")
     state.combat = true
-    state.settings.GRIMOIRE_TRACKER_OPACITY_LIST:SetValue(30)
+    state.look(state.env.GrimoireTrackerList, "Opacity", 30)
     equal(state.list.alpha, 0.3, "also in combat")
-    state.settings.GRIMOIRE_TRACKER_OPACITY_FOCUS:SetValue(45)
+    state.look(state.env.GrimoireTrackerFocus, "Opacity", 45)
     equal(state.focusAnchor.alpha, 0.45)
     state.combat = false
-    state.settings.GRIMOIRE_TRACKER_THEME:SetValue("bars")
+    state.look(state.env.GrimoireTracker, "Theme", "bars")
     equal(state.anchor.alpha, 0.6, "a rebuild keeps it")
     equal(slotByKey(pinnedRow(state, "target").container, "corruption").button.alpha, nil,
         "the engine's buttons are never touched for it")
@@ -5263,7 +5334,7 @@ test("a panel's opacity reaches its DoT bars as they are built, never touching t
             end
             local section = case[2] == "target" and state.anchor or case[2] == "focus" and state.focusAnchor
                 or state.list
-            state.settings["GRIMOIRE_TRACKER_OPACITY_" .. case[1]]:SetValue(40)
+            state.look(section, "Opacity", 40)
             equal(section.alpha, 0.4, theme .. " " .. case[2] .. ": the panel at once")
             equal(barColor(row(), 3)[4], 0.4, theme .. " " .. case[2] .. ": its DoT bars, rebuilt")
             if theme == "bars" then
@@ -5271,7 +5342,7 @@ test("a panel's opacity reaches its DoT bars as they are built, never touching t
                 equal(row().container.slots[3].button.display.text.alpha, 0.4, "and its time left")
             end
             state.combat = true
-            state.settings["GRIMOIRE_TRACKER_OPACITY_" .. case[1]]:SetValue(70)
+            state.look(section, "Opacity", 70)
             equal(section.alpha, 0.7, theme .. " " .. case[2] .. ": the panel at once, in combat")
             equal(barColor(row(), 3)[4], 0.4, theme .. " " .. case[2] .. ": its bars wait for combat to end")
             state.combat = false
@@ -5310,8 +5381,8 @@ end)
 test("compact sizes: icon size, name width, and the name beside, above, or below", function()
     local state = trackerFixture()
     local slots = #pinnedRow(state, "target").container.slots
-    state.settings.GRIMOIRE_TRACKER_COMPACT_ICONSIZE:SetValue(30)
-    state.settings.GRIMOIRE_TRACKER_COMPACT_NAMEWIDTH:SetValue(150)
+    state.look(state.env.GrimoireTracker, "Icon size", 30)
+    state.look(state.env.GrimoireTracker, "Name width", 150)
     local row = pinnedRow(state, "target")
     equal(row.height, 30 + 8)
     equal(row.width, 12 + 150 + slots * (30 + 6))
@@ -5319,7 +5390,7 @@ test("compact sizes: icon size, name width, and the name beside, above, or below
     equal(button.width, 30)
     local firstSlot = row.container.slots[1].button
     equal(firstSlot.points[#firstSlot.points][4], 6 + 150, "the first icon after the name")
-    state.settings.GRIMOIRE_TRACKER_COMPACT_NAMEPOSITION:SetValue("above")
+    state.look(state.env.GrimoireTracker, "Name position", "above")
     row = pinnedRow(state, "target")
     equal(row.height, 30 + 8 + 14, "a name line above the icons")
     equal(row.width, 12 + math.max(150, slots * 36))
@@ -5327,10 +5398,10 @@ test("compact sizes: icon size, name width, and the name beside, above, or below
     local first = row.container.slots[1].button
     equal(first.points[#first.points][4], 6, "icons start at the left edge")
     equal(first.points[#first.points][5], -(4 + 14), "below the name line")
-    state.settings.GRIMOIRE_TRACKER_COMPACT_NAMEPOSITION:SetValue("right")
+    state.look(state.env.GrimoireTracker, "Name position", "right")
     row = pinnedRow(state, "target")
     equal(row.name.points[#row.name.points][2], 6 + slots * 36, "the name after the icons")
-    state.settings.GRIMOIRE_TRACKER_COMPACT_NAMEPOSITION:SetValue("below")
+    state.look(state.env.GrimoireTracker, "Name position", "below")
     row = pinnedRow(state, "target")
     equal(row.name.points[#row.name.points][1], "BOTTOMLEFT")
     equal(state.focusAnchor.points[#state.focusAnchor.points][5], -(row.height + 2 + 7),
@@ -5338,8 +5409,8 @@ test("compact sizes: icon size, name width, and the name beside, above, or below
 end)
 test("bars sizes: width, line height, and the name above or below", function()
     local state = trackerFixture({db = {tracker = {theme = "bars"}}})
-    state.settings.GRIMOIRE_TRACKER_BARS_BARWIDTH:SetValue(400)
-    state.settings.GRIMOIRE_TRACKER_BARS_LINEHEIGHT:SetValue(20)
+    state.look(state.env.GrimoireTracker, "Bar width", 400)
+    state.look(state.env.GrimoireTracker, "Line height", 20)
     local row = pinnedRow(state, "target")
     local lines = #row.container.slots
     equal(row.width, 400)
@@ -5347,7 +5418,7 @@ test("bars sizes: width, line height, and the name above or below", function()
     local button = slotByKey(row.container, "corruption").button
     equal(button.height, 20)
     equal(button.width, 400 - 12)
-    state.settings.GRIMOIRE_TRACKER_BARS_NAMEPOSITION:SetValue("below")
+    state.look(state.env.GrimoireTracker, "Name position", "below")
     row = pinnedRow(state, "target")
     local first = row.container.slots[1].button
     equal(first.points[#first.points][5], -4, "the lines start at the top")
@@ -5356,7 +5427,7 @@ test("bars sizes: width, line height, and the name above or below", function()
 end)
 test("text size scales every tracker font", function()
     local state = trackerFixture()
-    state.settings.GRIMOIRE_TRACKER_COMPACT_TEXTSCALE:SetValue(150)
+    state.look(state.env.GrimoireTracker, "Text size", 150)
     local row = pinnedRow(state, "target")
     equal(row.name.fontSize, 15, "the name")
     local bars = trackerFixture({db = {tracker = {theme = "bars", sizes = {bars = {textScale = 50}}}}})
@@ -5364,20 +5435,15 @@ test("text size scales every tracker font", function()
     equal(pinnedRow(bars, "target").height, 9 + #pinnedRow(bars, "target").container.slots * 18 + 6,
         "a smaller name line")
 end)
-test("a size change in combat waits; Reset size restores the theme's own sizes", function()
+test("a size change in combat waits; the dialog's reset restores the theme's own sizes", function()
     local state = trackerFixture()
     state.combat = true
-    state.settings.GRIMOIRE_TRACKER_COMPACT_ICONSIZE:SetValue(36)
+    state.look(state.env.GrimoireTracker, "Icon size", 36)
     equal(pinnedRow(state, "target").height, 30, "the rows rebuild only out of combat")
     state.combat = false
     state.emit("PLAYER_REGEN_ENABLED")
     equal(pinnedRow(state, "target").height, 44)
-    local page = settingsPage(state, "DoT Tracker")
-    local reset
-    for _, heading in ipairs(page.headings) do
-        if heading.buttonText == "Reset size" then reset = heading end
-    end
-    reset.buttonClick()
+    state.resetEditModeSettings(state.anchor)
     equal(pinnedRow(state, "target").height, 28, "Grimoire's default: 20")
     equal(state.wtf.db.tracker.sizes.compact.iconSize, 20)
 end)
@@ -5427,26 +5493,6 @@ test("tracker names stay on one line in their room, and rows never grow from a l
         end
     end
 end)
-test("only the chosen theme's size settings show", function()
-    local state = trackerFixture()
-    local page = settingsPage(state, "DoT Tracker")
-    local function shown(variable)
-        for _, initializer in ipairs(page.initializers) do
-            if initializer.setting.variable == variable then
-                for _, predicate in ipairs(initializer.shownPredicates) do
-                    if not predicate() then return false end
-                end
-                return true
-            end
-        end
-    end
-    equal(shown("GRIMOIRE_TRACKER_COMPACT_ICONSIZE"), true)
-    equal(shown("GRIMOIRE_TRACKER_BARS_BARWIDTH"), false)
-    state.settings.GRIMOIRE_TRACKER_THEME:SetValue("bars")
-    equal(shown("GRIMOIRE_TRACKER_COMPACT_ICONSIZE"), false)
-    equal(shown("GRIMOIRE_TRACKER_BARS_LINEHEIGHT"), true)
-    equal(shown("GRIMOIRE_TRACKER_BARS_NAMEPOSITION"), true)
-end)
 test("saved tracker sizes are repaired on load", function()
     local state = fixture({db = {tracker = {sizes = {compact = {iconSize = 99, nameWidth = "x", namePosition = "middle"},
         bars = "broken"}}}})
@@ -5456,7 +5502,7 @@ test("saved tracker sizes are repaired on load", function()
     equal(sizes.compact.namePosition, "left")
     equal(sizes.bars.barWidth, 290)
     equal(sizes.bars.namePosition, "above")
-    state.settings.GRIMOIRE_TRACKER_BARS_NAMEPOSITION:SetValue("left")
+    state.look(state.env.GrimoireTracker, "Name position", "left")
     equal(sizes.bars.namePosition, "above", "Bars has no name beside the lines")
 end)
 -- Mob health in the tracker --------------------------------------------------------
@@ -5471,7 +5517,7 @@ local function healthFixture(text, extra)
 end
 test("mob health: a Compact name on the right fills only its column, after the icons", function()
     local state = healthFixture("none")
-    state.settings.GRIMOIRE_TRACKER_COMPACT_NAMEPOSITION:SetValue("right")
+    state.look(state.env.GrimoireTracker, "Name position", "right")
     local row = pinnedRow(state, "target")
     local slots = row.container.slots
     local last = slots[#slots].button
@@ -5510,13 +5556,13 @@ test("mob health: the name line is the health bar, with the number, percent, or 
     near3(pinnedRow(state, "focus").health.barColor, 0xe6 / 255, 0x1a / 255, 0x1a / 255, "red for your focus")
     dot(state, 6222, "Wolf")
     near3(shownRows(state)[1].health.barColor, 0x54 / 255, 0x54 / 255, 0x54 / 255, "dark grey for the others")
-    state.settings.GRIMOIRE_TRACKER_COMPACT_NAMEPOSITION:SetValue("above")
+    state.look(state.env.GrimoireTracker, "Name position", "above")
     row = pinnedRow(state, "target")
     equal(row.health.points[1][1], "TOPLEFT", "a name above the icons: its own line")
     equal(row.health.height, 14 + 2)
     equal(row.health.points[2][1], "TOPRIGHT")
     equal(row.health.points[2][4], -6)
-    state.settings.GRIMOIRE_TRACKER_COMPACT_NAMEPOSITION:SetValue("left")
+    state.look(state.env.GrimoireTracker, "Name position", "left")
     row = pinnedRow(state, "target")
     equal(row.health.maxValue, 2000)
     equal(row.health.value, 500)
@@ -5548,7 +5594,7 @@ test("in Bars the name line is the health bar, as wide as the DoT bars", functio
     equal(row.health.points[2][4], -6, "and right inset")
     equal(row.health.height, 18 - 2)
     equal(row.height, 18 + #row.container.slots * 18 + 6, "the row keeps its size")
-    state.settings.GRIMOIRE_TRACKER_BARS_NAMEPOSITION:SetValue("below")
+    state.look(state.env.GrimoireTracker, "Name position", "below")
     row = pinnedRow(state, "target")
     equal(row.health.points[1][1], "BOTTOMLEFT", "below: the name line at the bottom")
 end)
@@ -5596,12 +5642,12 @@ end)
 test("health settings rebuild the rows out of combat and are repaired on load", function()
     local state = trackerFixture()
     state.combat = true
-    state.settings.GRIMOIRE_TRACKER_HEALTH:SetValue(true)
+    state.look(state.env.GrimoireTracker, "Show mob health", true)
     equal(pinnedRow(state, "target").health, nil, "waits for combat to end")
     state.combat = false
     state.emit("PLAYER_REGEN_ENABLED")
     equal(pinnedRow(state, "target").health ~= nil, true)
-    state.settings.GRIMOIRE_TRACKER_HEALTH_TEXT:SetValue("both")
+    state.look(state.env.GrimoireTracker, "Health text", "both")
     equal(pinnedRow(state, "target").healthNumber ~= nil, true)
     local repaired = fixture({db = {tracker = {health = "yes", healthText = "all"}}})
     equal(repaired.wtf.db.tracker.health, false)
@@ -5728,15 +5774,13 @@ test("the dots switch and height setting apply at once", function()
     equal(bubble.points[#bubble.points][5], 20)
     state.settings.GRIMOIRE_TRACKER_PLATE_DOTS:SetValue(false)
     equal(bubbleOn(state, "nameplate1"), nil)
-    local page = state.categories["DoT Tracker"]
-    equal(page.initializers[1].setting.variable, "GRIMOIRE_TRACKER_THEME")
-    equal(page.initializers[2].setting.variable, "GRIMOIRE_TRACKER_OUTLINE_WIDTH")
-    equal(page.initializers[3].setting.variable, "GRIMOIRE_TRACKER_PLATE_DOTS")
-    equal(page.initializers[4].parentInitializer, page.initializers[3])
+    local page = state.categories.DoTs
+    equal(page.initializers[1].setting.variable, "GRIMOIRE_TRACKER_PLATE_DOTS", "first on the DoTs page")
+    equal(page.initializers[2].parentInitializer, page.initializers[1])
 end)
 test("the dot height slider has a gold mark at the default, hidden on reuse", function()
     local state = dotsFixture()
-    local initializer = state.categories["DoT Tracker"].initializers[4]
+    local initializer = state.categories.DoTs.initializers[2]
     local frame = state.env.CreateFrame("Frame")
     local slider = state.env.CreateFrame("Slider")
     frame.SliderWithSteppers = {Slider = slider}
@@ -5760,7 +5804,7 @@ test("without a known DoT the dots stay off and cannot be turned on", function()
     local state = dotsFixture({spellbook = {{spellID = 686, name = "Shadow Bolt"}}})
     equal(state.wtf.HasTrackableDots(), false)
     equal(bubbleOn(state, "nameplate1"), nil)
-    equal(state.categories["DoT Tracker"].initializers[3].modifyPredicates[1](), false)
+    equal(state.categories.DoTs.initializers[1].modifyPredicates[1](), false)
 end)
 -- The pinned rows' outline width (John, 2026-11-11; Dyre's Toolkit 2.8.0).
 test("the target and focus outline: saved 0-20 px, default 3, 0 draws none", function()
@@ -5773,27 +5817,23 @@ test("the target and focus outline: saved 0-20 px, default 3, 0 draws none", fun
     equal(state.wtf.OUTLINE_WIDTH_MAX, state.shared.TRACKER_OUTLINE.max, "the Toolkit's range")
     local engine = state.wtf.DotTracker()
     assert(engine.pinned.target.outline and engine.pinned.focus.outline, "an outline by default")
-    state.settings.GRIMOIRE_TRACKER_OUTLINE_WIDTH:SetValue(0)
+    state.look(state.env.GrimoireTracker, "Outline", 0)
     equal(state.wtf.db.tracker.outlineWidth, 0)
     equal(engine.pinned.target.outline, nil, "0 hides the target outline")
     equal(engine.pinned.focus.outline, nil, "and the focus outline")
-    state.settings.GRIMOIRE_TRACKER_OUTLINE_WIDTH:SetValue(12)
+    state.look(state.env.GrimoireTracker, "Outline", 12)
     assert(engine.pinned.target.outline, "drawn again")
 end)
-test("the outline slider shows px and a default mark, and greys without Toolkit 2.8", function()
+test("the outline is in the target and focus dialogs, and missing without Toolkit 2.8", function()
     local state = dotsFixture()
-    local outline
-    for _, initializer in ipairs(state.categories["DoT Tracker"].initializers) do
-        if initializer.setting and initializer.setting.variable == "GRIMOIRE_TRACKER_OUTLINE_WIDTH" then
-            outline = initializer
-        end
-    end
-    equal(outline.setting.name, "Target and focus outline")
-    contains(outline.tooltip, "0 hides it")
-    equal(outline.tooltip:find("2.8", 1, true), nil, "no need named while the Toolkit has it")
-    equal(outline.modifyPredicates[1](), true)
-    state.shared.TRACKER_OUTLINE = nil
-    equal(outline.modifyPredicates[1](), false, "greyed before Toolkit 2.8")
+    local outline = state.editModeSetting(state.env.GrimoireTracker, "Outline")
+    equal(outline.default, 3)
+    equal(outline.maxValue, state.wtf.OUTLINE_WIDTH_MAX)
+    contains(outline.desc, "0 hides it")
+    equal(state.editModeSetting(state.env.GrimoireTrackerFocus, "Outline") ~= nil, true)
+    equal(state.editModeSetting(state.env.GrimoireTrackerList, "Outline"), nil, "the others have none")
+    local old = dotsFixture({sharedMissing = "TRACKER_OUTLINE"})
+    equal(old.editModeSetting(old.env.GrimoireTracker, "Outline"), nil, "none before Toolkit 2.8")
 end)
 test("nameplate dots follow the per-slot nameplate choices", function()
     local state = dotsFixture({db = {tracker = {plateDots = true, onPlates = {immolate = false}}},
@@ -5824,20 +5864,30 @@ end)
 
 -- Settings page ----------------------------------------------------------------
 
-test("the settings page has a module switch and a Soul Shards subpage", function()
+test("the settings: a module switch each, then pages by topic", function()
     local state = fixture()
     local main = state.categories["Grimoire"]
-    local page = state.categories["Soul Shards"]
+    local page = state.categories["Shards and Stones"]
     equal(state.registered, main)
     equal(page.parent, main)
     equal(main.initializers[1].setting.variable, "GRIMOIRE_SHARDS_ENABLED")
     equal(main.initializers[2].setting.variable, "GRIMOIRE_STONES_ENABLED")
     equal(main.initializers[3].setting.variable, "GRIMOIRE_TRACKER_ENABLED")
-    equal(state.categories["DoT Tracker"].parent, main)
-    equal(state.categories.Stones.parent, main)
+    equal(main.initializers[5].setting.variable, "GRIMOIRE_SHIELD_ENABLED", "the shield's switch with the others")
+    local order = {}
+    for _, name in ipairs(state.categoryOrder) do
+        if state.categories[name].parent == main then order[#order + 1] = name end
+    end
+    equal(table.concat(order, ", "),
+        "Shards and Stones, DoTs, DoT Order and Colors, Control, Demon, Alerts, Diagnostics")
+    equal(state.categories.Stones, nil, "stones share the shards' page")
     equal(state.categories.Announce, nil, "Grimoire: no Announce page")
-    equal(state.categories.Control.parent, main)
-    equal(state.categories.DoTs.parent, main)
+    local demon = {}
+    for _, initializer in ipairs(state.categories.Demon.initializers) do
+        demon[#demon + 1] = initializer.setting.variable
+    end
+    equal(table.concat(demon, ","),
+        "GRIMOIRE_REMIND_DEMON,GRIMOIRE_PET_DIED,GRIMOIRE_PET_TAUNT,GRIMOIRE_PET_KEY_LABELS")
     for _, gone in ipairs({"Shield", "Cooldown Chimes", "Demon Armor"}) do
         equal(state.categories[gone], nil, "no page pointing to another AddOn: " .. gone)
     end
@@ -5861,7 +5911,7 @@ test("settings read and write the saved shard settings", function()
 end)
 test("the limit slider shows the soul bag size and is disabled while matching it", function()
     local state = fixture({bags = soulBag(16)})
-    local page = state.categories["Soul Shards"]
+    local page = state.categories["Shards and Stones"]
     local slider = page.initializers[2]
     equal(state.settings.GRIMOIRE_SHARDS_LIMIT:GetValue(), 16)
     equal(slider.parentInitializer, page.initializers[1])
@@ -5875,7 +5925,7 @@ test("turning off the soul bag match keeps the current limit as the manual one",
     equal(state.wtf.db.shards.autoLimit, false)
     equal(state.wtf.db.shards.limit, 16)
     equal(state.notified[#state.notified], "GRIMOIRE_SHARDS_LIMIT")
-    equal(state.categories["Soul Shards"].initializers[2].predicate(), true)
+    equal(state.categories["Shards and Stones"].initializers[2].predicate(), true)
     state.settings.GRIMOIRE_SHARDS_LIMIT:SetValue(9)
     equal(state.wtf.GetShardLimit(), 9)
 end)
@@ -5933,7 +5983,7 @@ test("prediction: without the combat log (Forever) the hidden-ticks path runs, a
     equal(state.wtf.PredictAvailable(), true)
     equal(state.wtf.predictor.hidden, true)
     for _, variable in ipairs({"GRIMOIRE_PREDICT_ENABLED", "GRIMOIRE_PREDICT_PLATES", "GRIMOIRE_PREDICT_DIES"}) do
-        for _, object in ipairs(state.categories["DoT Tracker"].initializers) do
+        for _, object in ipairs(state.categories.DoTs.initializers) do
             if object.setting.variable == variable then
                 equal(object.modifyPredicates[1](), true, variable .. " not greyed")
                 equal(object.tooltip:find("comes later", 1, true), nil, variable .. " says nothing false")
@@ -5952,7 +6002,7 @@ test("prediction: with neither path nothing registers, and the settings are grey
     equal(targetOverlay(state), nil, "no block")
     for _, variable in ipairs({"GRIMOIRE_PREDICT_ENABLED", "GRIMOIRE_PREDICT_PLATES", "GRIMOIRE_PREDICT_DIES"}) do
         local initializer
-        for _, object in ipairs(state.categories["DoT Tracker"].initializers) do
+        for _, object in ipairs(state.categories.DoTs.initializers) do
             if object.setting.variable == variable then initializer = object end
         end
         equal(initializer.modifyPredicates[1](), false, variable .. " greyed")
@@ -6211,7 +6261,7 @@ test("prediction: the setting is named Show Predictive DoT Damage", function()
     equal(state.settings.GRIMOIRE_PREDICT_ENABLED.name, "Show Predictive DoT Damage")
     equal(state.settings.GRIMOIRE_PREDICT_TRACKER, nil, "no switch of its own for the tracker")
     local initializer
-    for _, object in ipairs(state.categories["DoT Tracker"].initializers) do
+    for _, object in ipairs(state.categories.DoTs.initializers) do
         if object.setting.variable == "GRIMOIRE_PREDICT_ENABLED" then initializer = object end
     end
     contains(initializer.tooltip, "Predictive DoT damage")
@@ -6771,7 +6821,7 @@ test("block style: settings are repaired and greyed with no predictor", function
     equal(kept.wtf.db.predict.fill, "bar")
     equal(kept.wtf.db.predict.opacity, 35)
     local forever = predictFixture({combatLogRestricted = true, restrictCombatLog = true, noHiddenTicks = true})
-    for _, object in ipairs(forever.categories["DoT Tracker"].initializers) do
+    for _, object in ipairs(forever.categories.DoTs.initializers) do
         local variable = object.setting.variable
         if variable:match("^GRIMOIRE_PREDICT_") then
             equal(object.modifyPredicates[1](), false, variable .. " greyed")
@@ -7075,6 +7125,24 @@ test("recast cue: a cast time the game hides in combat stands at its last readab
     equal(state.recastFrame.scripts.OnUpdate, nil, "no clock with nothing timed")
 end)
 
+test("recast cue: yellow edges by default, or the Stones buttons' gold glow", function()
+    local state = recastFixture()
+    equal(state.wtf.db.recast.style, "edges")
+    state.castDot(6222, "Corruption")
+    state.now = state.now + 12.6
+    state.recastTick()
+    local mark = state.marks()[1]
+    equal(mark.edges[1].shown, true, "the yellow edges")
+    equal(mark.glow.shown, false)
+    state.settings.GRIMOIRE_RECAST_STYLE:SetValue("glow")
+    equal(mark.edges[1].shown, false, "no edges with the glow")
+    equal(mark.fill.shown, false)
+    equal(mark.glow.shown, true, "the gold glow")
+    equal(mark.alpha, 1, "the glow pulses on its own")
+    state.castDot(6222, "Corruption")
+    equal(mark.glow.shown, false, "gone with the recast")
+    equal(recastFixture({db = {recast = {style = "sparkles"}}}).wtf.db.recast.style, "edges", "repaired on load")
+end)
 test("recast cue: settings are repaired, on by default with a 0.5 s lead", function()
     local state = recastFixture({db = {tracker = {health = true}, recast = {enabled = "yes", lead = "soon"}}})
     equal(state.wtf.db.recast.enabled, true)
@@ -7103,7 +7171,7 @@ end)
 
 test("engines: the Focus box takes the bar's size once", function()
     local state = controlFixture()
-    state.settings.GRIMOIRE_CONTROL_SCALE:SetValue(80)
+    state.look(state.env.GrimoireControl, "Size", 80)
     local box = state.env.GrimoireControlFocus
     equal(box.parent, state.env.GrimoireControl, "inside the bar")
     equal(box:GetEffectiveScale(), 0.8, "the bar's 80%, not 64%")
@@ -7162,7 +7230,7 @@ end)
 
 test("smart curse: the Curse slot settings switch the pinned Curse slot's click", function()
     local state = trackerFixture()
-    local page = state.categories["DoT Tracker"]
+    local page = state.categories.DoTs
     local mode = initializerFor(page, "GRIMOIRE_TRACKER_CURSE_MODE")
     local marker = initializerFor(page, "GRIMOIRE_TRACKER_CURSE_MARKER")
     equal(mode.setting.name, "Curse slot click")
@@ -7327,6 +7395,92 @@ test("alerts: the window never takes the mouse, shows samples in Edit Mode, and 
     equal(alerts.scale, 50)
     equal(alerts.enabled, true)
     equal(alerts.chat, false)
+end)
+test("alerts: lines, background and size are in the window's Edit Mode dialog, not on the page", function()
+    local state = fixture()
+    local holder = state.env.GrimoireAlerts
+    local names = {}
+    for _, setting in ipairs(state.editModeEntry(holder).settings) do names[#names + 1] = setting.name end
+    equal(table.concat(names, ", "), "Lines, Background opacity, Size")
+    state.look(holder, "Lines", 5)
+    equal(state.wtf.db.alerts.lines, 5)
+    state.look(holder, "Lines", 99)
+    equal(state.wtf.db.alerts.lines, state.wtf.ALERT_LINES_MAX, "kept in range")
+    state.look(holder, "Background opacity", 25)
+    equal(state.wtf.db.alerts.background, 25)
+    state.look(holder, "Size", 130)
+    equal(holder:GetScale(), 1.3)
+    for _, initializer in ipairs(state.categories.Alerts.initializers) do
+        local variable = initializer.setting.variable
+        for _, gone in ipairs({"GRIMOIRE_ALERTS_LINES", "GRIMOIRE_ALERTS_BACKGROUND", "GRIMOIRE_ALERTS_SCALE",
+                "GRIMOIRE_SHIELD_NUMBER", "GRIMOIRE_REMIND_DEMON"}) do
+            equal(variable == gone, false, gone .. ": not on the Alerts page")
+        end
+    end
+end)
+
+-- The prep strip (0.3.5) --------------------------------------------------------
+local function editModeNames(state)
+    local names = {}
+    for _, entry in ipairs(state.editModeFrames) do names[entry.name] = true end
+    return names
+end
+local function stripSlot(state, frame)
+    local point = frame.points[#frame.points]
+    return point[1], point[4], point[5]
+end
+test("prep strip: off by default, each frame its own in Edit Mode", function()
+    local state = stonesFixture()
+    equal(state.wtf.db.strip.enabled, false)
+    equal(state.env.GrimoireStrip, nil)
+    local names = editModeNames(state)
+    equal(names["Grimoire Stones bar"], true)
+    equal(names["Grimoire reminders"], true)
+    equal(names["Grimoire shard counter"], true)
+    equal(names["Grimoire prep strip"], nil)
+end)
+test("prep strip: on, the stones, the counter and the reminder icons share one bar and one dialog", function()
+    local state = stonesFixture({db = {strip = {enabled = true}}})
+    local strip = state.env.GrimoireStrip
+    local names = editModeNames(state)
+    equal(names["Grimoire prep strip"], true)
+    equal(names["Grimoire Stones bar"], nil, "the members are not moved on their own")
+    equal(names["Grimoire reminders"], nil)
+    equal(names["Grimoire shard counter"], nil)
+    local members = {state.env[SOUL], state.env[HEALTH], state.wtf.shardCounter, state.env.GrimoireReminderArmor,
+        state.env.GrimoireReminderDemon}
+    for index, member in ipairs(members) do
+        equal(member:GetParent(), strip, "member " .. index .. " in the strip")
+        local point, x = stripSlot(state, member)
+        equal(point, "LEFT")
+        equal(x, 6 + (index - 1) * 42, "member " .. index .. ": its slot in the row")
+    end
+    equal(strip.width, 6 * 2 + 36 * 5 + 6 * 4)
+    equal(state.env.GrimoireStones.shown, false, "the Stones bar itself stays hidden")
+    local dialog = {}
+    for _, setting in ipairs(state.editModeEntry(strip).settings) do dialog[#dialog + 1] = setting.name end
+    equal(table.concat(dialog, ", "), "Layout, Size, Button spacing, Background")
+    state.look(strip, "Layout", "vertical")
+    equal(strip.height, 6 * 2 + 36 * 5 + 6 * 4, "a column")
+    equal((stripSlot(state, state.wtf.shardCounter)), "TOP")
+end)
+test("prep strip: a member switched off gives up its slot, out of combat", function()
+    local state = stonesFixture({db = {strip = {enabled = true}}})
+    local strip = state.env.GrimoireStrip
+    state.settings.GRIMOIRE_STONES_SHOWN:SetValue(false)
+    equal(state.env[SOUL].shown, false, "the stone buttons hide")
+    local _, x = stripSlot(state, state.wtf.shardCounter)
+    equal(x, 6, "the counter moves up")
+    equal(strip.width, 6 * 2 + 36 * 3 + 6 * 2)
+    state.combat = true
+    state.settings.GRIMOIRE_STONES_SHOWN:SetValue(true)
+    equal(state.env[SOUL].shown, false, "secure buttons wait for combat to end")
+    state.combat = false
+    state.emit("PLAYER_REGEN_ENABLED")
+    equal(state.env[SOUL].shown, true)
+    _, x = stripSlot(state, state.wtf.shardCounter)
+    equal(x, 6 + 2 * 42)
+    equal(initializerFor(state.categories["Shards and Stones"], "GRIMOIRE_STRIP_ENABLED").setting.default, false)
 end)
 
 local function reminderFixture(extra)

@@ -14,9 +14,10 @@ One action reaches another player, and only on your click: a left-click on the H
 
 - **Soul Shards.** Deletes shards that Drain Soul or Shadowburn create above your limit (your soul bag's size, or a number you set). Shards you had, bought or moved in are never deleted. A counter shows how many you carry.
 - **Stones.** A bar with Soulstone and Healthstone buttons: left-click uses, right-click creates. A button glows when you carry none of that stone and can make one. Row or column, size, spacing and background are set in Edit Mode. Reminders when none is up.
-- **DoT tracker.** A row per mob you have DoTs on, with the time left on your Curse, Bane, Corruption, Immolate, Siphon Life and Fear. Optional dots under nameplates.
+- **Prep strip.** Optional: the Stones buttons, the shard counter and the reminder icons in one bar.
+- **DoT tracker.** A row per mob you have DoTs on, with the time left on your Curse, Bane, Corruption, Immolate, Siphon Life and Fear. Dyre's look or a gold rim. Optional dots under nameplates.
 - **Recast cue.** A DoT's slot on the tracker pulses when it is time to start casting it again: when its time left is the spell's cast time plus a lead time you set, so the new one lands as the old one ends.
-- **Predict.** Shows the damage your DoTs will still do on the target's health bar, and DIES when they will finish the mob. While you channel Wrack it counts the faster ticks (built ahead of the talent; not yet checked in game).
+- **Predict.** Shows the damage your DoTs will still do on the target's health bar, in Dyre's stripes or the game's bar texture, and DIES when they will finish the mob. While you channel Wrack it counts the faster ticks (built ahead of the talent; not yet checked in game).
 - **Control bar.** Timers for the mobs you Fear or Banish, with `! Fear`, `! Banish`, `! Seduction` and `! Curse` macros kept up to date in your macro list.
 - **Alert window.** Short lines in a window of their own: centered text, no backdrop by default.
 - **Reminders.** Glowing click-to-cast icons for a missing Demon Armor or Demon Skin and a missing demon. Row or column, size, spacing and background are set in Edit Mode, as for the Stones bar. Their lines back off (at once, then 2, 5, then every 15 minutes) and stay quiet while you are dead, on a flight path or resting.
@@ -26,7 +27,7 @@ One action reaches another player, and only on your click: a left-click on the H
 - **Cooldown alerts.** A line just before a chosen spell is ready, timed from your own cast.
 - **Shield display.** A gold-rimmed arc for Sacrifice and other absorbs, to the right, left, top or bottom of your character, or gold-rimmed rows or columns with the number under, left or right. Set in Edit Mode.
 - **Pet bar key labels.** Keeps the pet bar's key labels at the size and place of your other bars' labels.
-- **Edit Mode.** Every Grimoire frame moves in the game's own Edit Mode, under its own name, and snaps like the game's frames.
+- **Edit Mode.** Every Grimoire frame moves in the game's own Edit Mode, under its own name, and snaps like the game's frames. Its look is set there too: select it.
 - **Diagnostics.** While you play, counts whether the game lets addon code read the values Grimoire's features need. Counts only, kept on your computer.
 
 ## How it differs from Warlock Tools Forever

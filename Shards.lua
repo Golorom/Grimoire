@@ -375,6 +375,9 @@ function WTF.RefreshShardCounter()
     if not counter then
         return
     end
+    if WTF.StripActive() then
+        WTF.RefreshStrip()
+    end
     if not WTF.db.shards.counter then
         counter:Hide()
         return
@@ -436,28 +439,38 @@ local function CreateCounter()
     end
     counter.count:SetShadowColor(0, 0, 0, 1)
     counter.count:SetShadowOffset(1, -1)
+    counter:SetScript("OnEnter", ShowCounterTooltip)
+    counter:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    -- 0.3.5: in the prep strip (Strip.lua), after the Stones buttons.
+    if WTF.StripActive() then
+        WTF.JoinStrip(counter, 3, function() return WTF.db.shards.counter end, false)
+        return
+    end
     -- Moves in Edit Mode (EditMode.lua).
     WTF.RegisterMovable(counter, function(position) WTF.db.shards.counterPosition = position end,
         {name = "Grimoire shard counter", default = {point = "CENTER",
             x = UIParent:GetWidth() * (COUNTER_DEFAULT_X - 0.5), y = UIParent:GetHeight() * (COUNTER_DEFAULT_Y - 0.5)}})
-    counter:SetScript("OnEnter", ShowCounterTooltip)
-    counter:SetScript("OnLeave", function() GameTooltip:Hide() end)
     -- The saved place is in the counter's own scale, so the scale comes first.
     counter:SetScale(WTF.db.shards.counterScale / 100)
     PlaceCounter()
+    -- 0.3.5: its size in its Edit Mode dialog (was on the settings page).
+    WTF.AddEditModeSettings(counter, function(kinds)
+        return {WTF.EditModeSizeSetting(kinds, function() return WTF.db.shards.counterScale end,
+            WTF.SetShardCounterScale, "In percent. It keeps its center, and changes at once, also in combat.")}
+    end)
 end
 
 -- A plain frame: its size changes at once, also in combat, keeping its center.
 function WTF.SetShardCounterScale(percent)
     WTF.db.shards.counterScale = WTF.SanitizeFrameScale(percent)
-    if counter then
+    if counter and not WTF.StripActive() then
         WTF.ScaleKeepingCenter(counter, WTF.db.shards.counterScale / 100)
     end
 end
 
 function WTF.ResetShardCounterPosition()
     WTF.db.shards.counterPosition = nil
-    if counter then
+    if counter and not WTF.StripActive() then
         PlaceCounter()
     end
 end

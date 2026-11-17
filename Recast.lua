@@ -31,6 +31,9 @@ local COLOR = {1, 0.95, 0.4}
 local SLOT_OF = {corruption = "corruption", immolate = "immolate", siphon = "siphon", agony = "bane"}
 local FAMILY_ORDER = {"corruption", "agony", "immolate", "siphon"}
 WTF.RECAST_LEAD_MIN, WTF.RECAST_LEAD_MAX, WTF.DEFAULT_RECAST_LEAD = 0, 20, 5
+-- 0.3.5: the mark's look, yellow edges (as before) or the gold glow of the
+-- Stones buttons (Glow.lua).
+WTF.RECAST_STYLES = {{key = "edges", label = "Yellow edges"}, {key = "glow", label = "Gold glow"}}
 
 local recast = {marks = {}, castSeconds = {}, shown = {}}
 local frame
@@ -41,6 +44,7 @@ function WTF.SanitizeRecast(saved)
     return {
         enabled = saved.enabled ~= false,
         lead = WTF.SanitizeWhole(saved.lead, WTF.RECAST_LEAD_MIN, WTF.RECAST_LEAD_MAX, WTF.DEFAULT_RECAST_LEAD),
+        style = WTF.SanitizeChoice(saved.style, WTF.RECAST_STYLES, "edges"),
     }
 end
 
@@ -109,6 +113,7 @@ local function MakeMark(region)
     fill:SetAllPoints(mark)
     fill:SetColorTexture(COLOR[1], COLOR[2], COLOR[3], 0.25)
     mark.fill = fill
+    mark.glow = WTF.CreateGlow(mark)
     mark.region = region
     mark:Hide()
     return mark
@@ -180,12 +185,20 @@ local function Update()
         end
     end
     -- A slow pulse, so the mark reads as "now" and not as part of the row.
-    local alpha = 0.55 + 0.45 * math.abs(math.sin(now * 4))
+    -- The glow pulses on its own.
+    local glow = WTF.db.recast.style == "glow"
+    local alpha = glow and 1 or 0.55 + 0.45 * math.abs(math.sin(now * 4))
     for region, mark in pairs(recast.marks) do
         if wanted[region] then
+            for _, edge in ipairs(mark.edges) do
+                edge:SetShown(not glow)
+            end
+            mark.fill:SetShown(not glow)
+            WTF.SetGlow(mark.glow, glow)
             mark:SetAlpha(alpha)
             mark:Show()
         else
+            WTF.SetGlow(mark.glow, false)
             mark:Hide()
         end
     end

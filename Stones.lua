@@ -363,7 +363,11 @@ local function UpdateVisibility()
         return
     end
     local settings = WTF.db.stones
-    if settings.enabled and settings.shown then
+    -- 0.3.5: in the prep strip the strip shows the buttons; the bar stays hidden.
+    if WTF.StripActive() then
+        buttons.bar:Hide()
+        WTF.RefreshStrip()
+    elseif settings.enabled and settings.shown then
         buttons.bar:Show()
     else
         buttons.bar:Hide()
@@ -629,7 +633,7 @@ end
 -- Secure buttons, so out of combat.
 local function ApplyBarLayout()
     local bar = buttons.bar
-    if not bar then
+    if not bar or WTF.StripActive() then
         return
     end
     if InCombatLockdown() then
@@ -658,7 +662,7 @@ end
 -- The bar holds secure buttons, so its size changes only out of combat; it
 -- keeps its center (and saves it).
 local function ApplyBarScale()
-    if not buttons.bar then
+    if not buttons.bar or WTF.StripActive() then
         return
     end
     if InCombatLockdown() then
@@ -934,17 +938,27 @@ function WTF.InitializeStones()
     bar:SetMovable(true)
     bar:SetClampedToScreen(true)
     bar:EnableMouse(true)
-    -- Moves in Edit Mode (EditMode.lua).
-    WTF.RegisterMovable(bar, function(position) WTF.db.stones.position = position end,
-        {name = "Grimoire Stones bar", default = WTF.EditModeDefault(DEFAULT_POINT)})
     buttons.bar = bar
     buttons.soulstone = CreateStoneButton(bar, "GrimoireSoulstone", "soulstone", 1)
     buttons.healthstone = CreateStoneButton(bar, "GrimoireHealthstone", "healthstone", 2)
-    ApplyBarLayout()
-    AddStonesEditModeSettings(bar)
-    -- The saved place is in the bar's own scale, so the scale comes first.
-    bar:SetScale(WTF.db.stones.scale / 100)
-    PlaceBar(bar)
+    if WTF.StripActive() then
+        -- 0.3.5: the buttons go into the prep strip (Strip.lua), first.
+        local function Wanted()
+            return WTF.db.stones.enabled and WTF.db.stones.shown
+        end
+        bar:Hide()
+        WTF.JoinStrip(buttons.soulstone, 1, Wanted, true)
+        WTF.JoinStrip(buttons.healthstone, 2, Wanted, true)
+    else
+        -- Moves in Edit Mode (EditMode.lua).
+        WTF.RegisterMovable(bar, function(position) WTF.db.stones.position = position end,
+            {name = "Grimoire Stones bar", default = WTF.EditModeDefault(DEFAULT_POINT)})
+        ApplyBarLayout()
+        AddStonesEditModeSettings(bar)
+        -- The saved place is in the bar's own scale, so the scale comes first.
+        bar:SetScale(WTF.db.stones.scale / 100)
+        PlaceBar(bar)
+    end
     -- Level requirements need item data, which arrives later on first use.
     if type(C_Item.RequestLoadItemDataByID) == "function" then
         for _, rank in ipairs(HEALTHSTONES) do

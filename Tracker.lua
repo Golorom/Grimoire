@@ -109,6 +109,11 @@ function WTF.SetTrackerTheme(theme)
     Rebuild()
 end
 
+function WTF.SetTrackerStyle(style)
+    WTF.db.tracker.style = WTF.SanitizeChoice(style, WTF.FRAME_STYLES, "dyre")
+    WTF.ApplyPanelColors()
+end
+
 function WTF.SetTrackerPanelOpacity(key, percent)
     WTF.db.tracker.panelOpacity[key] = WTF.SanitizeWhole(percent, WTF.PANEL_OPACITY_MIN, WTF.PANEL_OPACITY_MAX,
         WTF.DEFAULT_PANEL_OPACITY)
@@ -196,10 +201,113 @@ local SECTION_INFO = {
     [NAMES.list] = {name = "Grimoire DoT tracker list", y = -120},
 }
 
+-- Each part's Edit Mode dialog (0.3.5, moved from the settings page): first
+-- the look all three parts share (theme, sizes, outline, mob health), then
+-- the part's own color and opacity. Sizes and the name position act on the
+-- theme in use. A change in combat applies when combat ends.
+local PANEL_OF = {[NAMES.target] = "target", [NAMES.focus] = "focus", [NAMES.list] = "list"}
+local SHARED = " Shared by all three parts of the DoT tracker."
+local THEMES = {{key = "compact", label = "Compact"}, {key = "bars", label = "Bars"}}
+
+local function Values(list)
+    local values = {}
+    for _, choice in ipairs(list) do
+        values[#values + 1] = {text = choice.label, value = choice.key}
+    end
+    return values
+end
+
+local function Spec(theme, key)
+    for _, spec in ipairs(WTF.TRACKER_SIZE_SPECS[theme]) do
+        if spec.key == key then
+            return spec
+        end
+    end
+end
+
+local function SizeSetting(kinds, theme, key)
+    local spec = Spec(theme or "compact", key)
+    local store = WTF.db.tracker
+    return {kind = kinds.Slider, name = spec.label, default = spec.default, minValue = spec.min,
+        maxValue = spec.max, valueStep = spec.step,
+        get = function() return store.sizes[theme or store.theme][key] end,
+        set = function(_, value) WTF.SetTrackerSize(theme or store.theme, key, value) end,
+        hidden = theme and function() return store.theme ~= theme end or nil,
+        desc = (spec.tooltip or ("In the " .. (theme == "bars" and "Bars" or theme and "Compact" or "current")
+            .. " theme.")) .. SHARED}
+end
+
+local function SectionSettings(frame, panel)
+    local store = WTF.db.tracker
+    local colors = {}
+    for _, entry in ipairs(WTF.TRACKER_PANEL_COLORS) do
+        colors[entry.key] = entry
+    end
+    local name = ({target = "target panel", focus = "focus panel", list = "other mobs' panel"})[panel]
+    WTF.AddEditModeSettings(frame, function(kinds)
+        local list = {
+            {kind = kinds.Dropdown, name = "Theme", default = "compact", values = Values(THEMES),
+                get = function() return store.theme end, set = function(_, value) WTF.SetTrackerTheme(value) end,
+                desc = "Compact: a row per mob with an icon per spell. Bars: a block per mob with a bar per spell "
+                    .. "you know, draining as its time runs out." .. SHARED},
+            {kind = kinds.Dropdown, name = "Style", default = "dyre", values = Values(WTF.FRAME_STYLES),
+                get = function() return store.style end, set = function(_, value) WTF.SetTrackerStyle(value) end,
+                desc = "Dyre's: each row's border in its panel's color. Gold rim: a gold border, as the game's own "
+                    .. "frames have; the target and focus outlines keep their colors." .. SHARED},
+            SizeSetting(kinds, "compact", "iconSize"),
+            SizeSetting(kinds, "compact", "nameWidth"),
+            SizeSetting(kinds, "bars", "barWidth"),
+            SizeSetting(kinds, "bars", "lineHeight"),
+            SizeSetting(kinds, nil, "textScale"),
+            {kind = kinds.Dropdown, name = "Name position", default = "left",
+                values = function() return Values(WTF.TRACKER_NAME_POSITIONS[store.theme]) end,
+                get = function() return store.sizes[store.theme].namePosition end,
+                set = function(_, value) WTF.SetTrackerSize(store.theme, "namePosition", value) end,
+                desc = "Where the mob's name sits in each row." .. SHARED},
+        }
+        if panel ~= "list" and WTF.TrackerOutlineAvailable() then
+            list[#list + 1] = {kind = kinds.Slider, name = "Outline", default = WTF.DEFAULT_OUTLINE_WIDTH,
+                minValue = WTF.OUTLINE_WIDTH_MIN, maxValue = WTF.OUTLINE_WIDTH_MAX, valueStep = 1,
+                get = function() return store.outlineWidth end,
+                set = function(_, value) WTF.SetTrackerOutlineWidth(value) end,
+                desc = "How thick the solid outline around the target and focus rows is, in pixels. 0 hides it."}
+        end
+        list[#list + 1] = {kind = kinds.Checkbox, name = "Show mob health", default = false,
+            get = function() return store.health end, set = function(_, value) WTF.SetTrackerHealth("health", value) end,
+            desc = "Each mob's name line is its health bar, in the panel's color." .. SHARED}
+        list[#list + 1] = {kind = kinds.Dropdown, name = "Health text", default = "none",
+            values = Values(WTF.TRACKER_HEALTH_TEXTS),
+            get = function() return store.healthText end,
+            set = function(_, value) WTF.SetTrackerHealth("healthText", value) end,
+            hidden = function() return not store.health end,
+            desc = "The mob's health as text after its name: its number, its percent, or both." .. SHARED}
+        if kinds.ColorPicker and type(CreateColor) == "function" then
+            local entry = colors[panel]
+            list[#list + 1] = {kind = kinds.ColorPicker, name = "Color", default = CreateColor(WTF.HexToRGB(entry.color)),
+                get = function() return CreateColor(WTF.HexToRGB(store.panelColors[panel])) end,
+                set = function(_, color)
+                    store.panelColors[panel] = WTF.RGBToHex(color:GetRGB())
+                    WTF.ApplyPanelColors()
+                end,
+                desc = panel == "list" and "The row border and health fill of the other mobs' rows."
+                    or "The outline and health fill of the " .. name .. "."}
+        end
+        list[#list + 1] = {kind = kinds.Slider, name = "Opacity", default = WTF.DEFAULT_PANEL_OPACITY,
+            minValue = WTF.PANEL_OPACITY_MIN, maxValue = WTF.PANEL_OPACITY_MAX, valueStep = 5,
+            get = function() return store.panelOpacity[panel] end,
+            set = function(_, value) WTF.SetTrackerPanelOpacity(panel, value) end,
+            desc = "How solid the " .. name .. " is, rows and all, in percent."}
+        return list
+    end)
+end
+
 local function RegisterSection(frame, save)
     local info = SECTION_INFO[frame:GetName()] or {name = frame:GetName(), y = 0}
     WTF.RegisterMovable(frame, save, {name = info.name,
         default = {point = DEFAULT_POINT[1], x = DEFAULT_POINT[3], y = DEFAULT_POINT[4] + info.y}})
+    if PANEL_OF[frame:GetName()] then
+        SectionSettings(frame, PANEL_OF[frame:GetName()])
+    end
 end
 
 function WTF.InitializeTracker()
@@ -217,6 +325,12 @@ function WTF.InitializeTracker()
         point = DEFAULT_POINT,
         slotColor = WTF.SlotColor,
         panelColor = WTF.PanelColor,
+        -- 0.3.5: the gold rim style colors every row's border gold.
+        borderColor = function()
+            if WTF.db.tracker.style == "gold" then
+                return WTF.GOLD_RIM
+            end
+        end,
         -- Each part moves in Edit Mode (EditMode.lua) under its own name.
         movable = {register = RegisterSection, beginDrag = WTF.BeginDrag, endDrag = WTF.EndDrag},
         locked = function() return WTF.db.locked ~= false end,

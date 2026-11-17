@@ -17,10 +17,11 @@ Grimoire stands on four MIT projects by Dyre (John Bedworth). None of them is re
 
 ## Grimoire's own changes to engine files
 
-Two engine files differ from upstream by more than line 2:
+Three engine files differ from upstream by more than line 2:
 
 - `Engine\DotPredict.lua` (0.2.2): tick-rate channels, for Wrack. `spec.channels` and `spec.onRate` are new; every changed or added line carries a `Grimoire` comment, and the main block sits between `SentKey` and `OnSent` under the heading "Grimoire: tick-rate channels". When pulling an upstream change to this file, apply the upstream diff first, then check that the marked lines are still in place (`grep -n Grimoire Engine/DotPredict.lua` lists 15). If Dyre's Toolkit gains its own Wrack handling, drop this patch and use upstream's.
-- `Engine\DotTracker.lua` (0.2.3): four lines in `CreateRow` that keep each slot's own icon in `row.slotIcons[slot.key]`, marked `Grimoire`, so the recast cue can lay its mark over a slot without touching the row.
+- `Engine\DotTracker.lua` (0.2.3): four lines in `CreateRow` that keep each slot's own icon in `row.slotIcons[slot.key]`, marked `Grimoire`, so the recast cue can lay its mark over a slot without touching the row. 0.3.5: `ColorPanel` asks `spec.borderColor(panel)` for the row border's color first (the gold rim style), marked `Grimoire`.
+- `Engine\Control.lua` (0.3.5): one line in `CreateFocusBox` that keeps the Focus box's display frame as `box.display`, marked `Grimoire`, so the gold rim style can color its border.
 
 ## Replaced by Grimoire's own
 

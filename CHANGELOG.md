@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.3.5 (2026-11-17)
+
+New file: restart the game client.
+
+Changed
+- Settings pages by topic: Shards and Stones, DoTs, DoT Order and Colors, Control, Demon, Alerts, Diagnostics. The shield's switch is on the main page.
+- How frames look is set in each frame's Edit Mode dialog, no longer on the pages: DoT tracker theme, sizes, name position, outline, mob health, panel color and opacity; Control bar size; alert window lines, background and size; shard counter size.
+- Predict: Block fill is now Block style: Dyre's stripes, WoW bar (the game's own bar texture) or Solid color.
+
+Added
+- Prep strip, off by default: the Stones buttons, the shard counter and the reminder icons in one bar with one Edit Mode dialog. Shards and Stones page, after a reload.
+- Style for the DoT tracker and the Control bar in their Edit Mode dialogs: Dyre's (default) or Gold rim.
+- Recast cue look: yellow edges (default) or the gold glow of the Stones buttons. DoTs page.
+
+Removed
+- The tracker's Reset size button. The Edit Mode dialog's own reset does it.
+
 ## 0.3.4 (2026-11-17)
 
 Added

@@ -227,6 +227,9 @@ local function Apply()
     elseif not quiet then
         Nag("demon", "No demon out. Click the icon to summon.")
     end
+    if WTF.StripActive() then
+        WTF.RefreshStrip()
+    end
 end
 
 -- Many events come in bursts; one refresh shortly after, out of combat.
@@ -319,6 +322,9 @@ end
 local LAYOUT_JOB, SCALE_JOB = {}, {}
 
 local function ApplyLayout()
+    if WTF.StripActive() then
+        return
+    end
     WTF.LayoutButtonBar(holder, {buttons.armor, buttons.demon}, WTF.db.reminders, BUTTON_SIZE, PADDING)
 end
 
@@ -334,14 +340,14 @@ end
 
 function WTF.SetRemindersScale(percent)
     WTF.db.reminders.scale = WTF.SanitizeFrameScale(percent)
-    if holder then
+    if holder and not WTF.StripActive() then
         WTF.shared.OutOfCombat(SCALE_JOB, function() WTF.ScaleKeepingCenter(holder, WTF.db.reminders.scale / 100) end)
     end
 end
 
 function WTF.ResetRemindersPosition()
     WTF.db.reminders.position = nil
-    if holder then
+    if holder and not WTF.StripActive() then
         WTF.shared.OutOfCombat(holder, Place)
     end
 end
@@ -361,18 +367,25 @@ function WTF.InitializeReminders()
     holder:SetClampedToScreen(true)
     holder:SetMovable(true)
     holder:EnableMouse(false)
-    WTF.RegisterMovable(holder, function(position) WTF.db.reminders.position = position end,
-        {name = "Grimoire reminders", default = WTF.EditModeDefault(DEFAULT_POINT)})
     buttons.armor = CreateButton("armor", 1)
     buttons.demon = CreateButton("demon", 2)
     WTF.reminderButtons = buttons
-    ApplyLayout()
-    WTF.AddButtonBarSettings(holder, {settings = function() return WTF.db.reminders end,
-        setLook = WTF.SetRemindersLook, setScale = WTF.SetRemindersScale, spacing = BUTTON_GAP, background = false,
-        what = "the icons"})
-    -- The saved place is in the holder's own scale, so the scale comes first.
-    holder:SetScale(WTF.db.reminders.scale / 100)
-    Place()
+    if WTF.StripActive() then
+        -- 0.3.5: the icons go into the prep strip (Strip.lua), last.
+        holder:Hide()
+        WTF.JoinStrip(buttons.armor, 4, function() return WTF.db.reminders.armor end, false)
+        WTF.JoinStrip(buttons.demon, 5, function() return WTF.db.reminders.demon end, false)
+    else
+        WTF.RegisterMovable(holder, function(position) WTF.db.reminders.position = position end,
+            {name = "Grimoire reminders", default = WTF.EditModeDefault(DEFAULT_POINT)})
+        ApplyLayout()
+        WTF.AddButtonBarSettings(holder, {settings = function() return WTF.db.reminders end,
+            setLook = WTF.SetRemindersLook, setScale = WTF.SetRemindersScale, spacing = BUTTON_GAP,
+            background = false, what = "the icons"})
+        -- The saved place is in the holder's own scale, so the scale comes first.
+        holder:SetScale(WTF.db.reminders.scale / 100)
+        Place()
+    end
     local events = CreateFrame("Frame")
     events:RegisterEvent("PLAYER_ENTERING_WORLD")
     events:RegisterEvent("PLAYER_REGEN_ENABLED")

@@ -7,7 +7,7 @@ Grimoire is plain Lua 5.1 for the WoW Forever client. No build step and no requi
 1. **Engine** (`Engine\`): 12 files copied unmodified from Dyre's Toolkit, plus `Shim.lua`. The only change in each engine file is line 2, which points it at Grimoire's private namespace (`addon.engine`) instead of the `DyresToolkit` global. Two exceptions, every line of them marked `Grimoire`: `DotPredict.lua` carries the tick-rate channels (Wrack), and `DotTracker.lua` keeps each slot's icon by name for the recast cue. Do not edit engine files otherwise; see UPSTREAM.md.
 2. **Core** (`Core.lua`, `Commands.lua`, `EditMode.lua`): saved settings and their repair on load, the login sequence, slash commands, and putting every frame into the game's Edit Mode.
 3. **Features**: one file each. A feature file defines `WTF.Sanitize<Name>` for its settings, `WTF.Initialize<Name>` for login, and usually `WTF.Refresh<Name>` and `WTF.Report<Name>Debug`.
-4. **Options** (`Options.lua`): the settings pages, built on the game's Settings API.
+4. **Options** (`Options.lua`): the settings pages, built on the game's Settings API, by topic: what each part does. How a frame looks is set in its Edit Mode dialog, registered by the frame's own file.
 
 The code's namespace table is called `WTF` (the second value of `...` in each file). That name comes from Warlock Tools Forever and is kept so upstream diffs stay readable.
 
@@ -23,6 +23,7 @@ The code's namespace table is called `WTF` (the second value of `...` in each fi
 | `Libs\LibEditMode\` | LibEditMode (p3lim), unmodified, loaded into Grimoire's namespace by its `namespaced.lua`, so no other addon's copy is involved; Forever and retail only |
 | `EditMode.lua` | registers every frame with Edit Mode (name, default place, dialog settings), shows the samples while Edit Mode is open, snaps a dropped frame (grid, screen, other frames) before LibEditMode saves it, scales a frame around its center |
 | `Glow.lua` | the pulsing gold glow on buttons that want a click (stones, reminder icons), from the `Textures\Glow*.tga` pieces |
+| `Strip.lua` | the optional prep strip: the Stones buttons, the shard counter and the reminder icons reparented into one Edit Mode frame, laid out out of combat; on or off at login |
 | `Shards.lua` | Soul Shard deletion and the counter |
 | `Stones.lua` | Stones bar, stone macros, stone reminders, Healthstone trade |
 | `Tracker.lua`, `Dots.lua`, `Predict.lua`, `Control.lua` | glue between Grimoire's settings and the four engines |

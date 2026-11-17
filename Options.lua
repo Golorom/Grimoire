@@ -1,16 +1,17 @@
 local _, WTF = ...
 
--- The AddOn settings: a main page with one switch per module, and a subpage
--- per module for its details. Shards and Stones use Blizzard's vertical layout
--- with proxy settings that read and write GrimoireDB directly; DoTs rows you
+-- The AddOn settings: a main page with one switch per module, and subpages
+-- by topic for what each does. Vertical pages use Blizzard's layout with
+-- proxy settings that read and write GrimoireDB directly; DoT order rows you
 -- drag to reorder, so that is a canvas page. Grimoire: no Announce page and no
--- pages pointing to Dyre's other AddOns.
+-- pages pointing to Dyre's other AddOns. 0.3.5: how frames look (sizes,
+-- layouts, colors) is set in each frame's Edit Mode dialog, not on the pages.
 local TITLE = "Grimoire"
-local SHARDS_TITLE = "Soul Shards"
-local STONES_TITLE = "Stones"
-local TRACKER_TITLE = "DoT Tracker"
-local DOTS_TITLE = "DoTs"
+local SHARDS_TITLE = "Shards and Stones"
+local TRACKER_TITLE = "DoTs"
+local DOTS_TITLE = "DoT Order and Colors"
 local CONTROL_TITLE = "Control"
+local DEMON_TITLE = "Demon"
 local ALERTS_TITLE = "Alerts"
 local DIAGNOSTICS_TITLE = "Diagnostics"
 local UNAVAILABLE = "The AddOn settings page is unavailable on this client. Use /grim shards for status."
@@ -69,10 +70,6 @@ end
 -- A percent slider's value shows its % sign, so its label has no "(%)".
 local function Percent(value)
     return string.format("%d%%", value)
-end
-
-local function Pixels(value)
-    return string.format("%d px", value)
 end
 
 -- format: true for percent, or a function for the value's text.
@@ -142,20 +139,10 @@ local function AddControlPage(parent)
     Flag(page, "GRIMOIRE_CONTROL_PLATE_TIMERS", "Fear timers on nameplates", "control", "plateTimers", true,
         "A thin bar under each feared mob's nameplate that drains with your Fear's time left, so you see which "
             .. "one is about to break; click its nameplate to target it.", RefreshControl)
-    local scale = Proxy(page, "GRIMOIRE_CONTROL_SCALE", Settings.VarType.Number, "Bar size",
-        WTF.DEFAULT_CONTROL_SCALE,
-        function() return WTF.db.control.scale end,
-        function(value)
-            WTF.db.control.scale = WTF.SanitizeControlScale(value)
-            RefreshControl()
-        end)
-    Settings.CreateSlider(page, scale,
-        SliderOptions(WTF.CONTROL_SCALE_MIN, WTF.CONTROL_SCALE_MAX, WTF.CONTROL_SCALE_STEP, true),
-        "How big the control bar is, in percent. A change in combat applies when combat ends.")
 end
 
-local function AddShardPage(parent)
-    local page = Settings.RegisterVerticalLayoutSubcategory(parent, SHARDS_TITLE)
+local function AddShardsSection(page, layout)
+    Heading(layout, "Soul Shards", "Grimoire deletes Soul Shards that Drain Soul creates above your limit.")
     local auto = Proxy(page, "GRIMOIRE_SHARDS_AUTO_LIMIT", Settings.VarType.Boolean,
         "Match soul bag size", true,
         function() return WTF.db.shards.autoLimit end,
@@ -195,7 +182,8 @@ local function AddShardPage(parent)
     Flag(page, "GRIMOIRE_SHARDS_REPORT", "Report deletions in chat", "shards", "report", true,
         "Print one chat line for each Soul Shard Grimoire deletes. Off by default.")
     local counterInitializer = Flag(page, "GRIMOIRE_SHARDS_COUNTER", "Show the shard counter", "shards", "counter",
-        true, "A Soul Shard icon with your shard count: red when low, green at your limit. Move it in Edit Mode.",
+        true, "A Soul Shard icon with your shard count: red when low, green at your limit. Move it and set its "
+            .. "size in Edit Mode.",
         RefreshShardCounter)
     local low = Proxy(page, "GRIMOIRE_SHARDS_COUNTER_LOW", Settings.VarType.Number, "Low shard warning",
         WTF.DEFAULT_SHARD_LOW,
@@ -211,30 +199,14 @@ local function AddShardPage(parent)
     local lowInitializer = Settings.CreateSlider(page, low, lowOptions,
         "The counter turns red at this many Soul Shards or fewer.")
     lowInitializer:SetParentInitializer(counterInitializer, function() return WTF.db.shards.counter end)
-    local counterScale = Proxy(page, "GRIMOIRE_SHARDS_COUNTER_SCALE", Settings.VarType.Number, "Shard counter size",
-        WTF.DEFAULT_FRAME_SCALE,
-        function() return WTF.db.shards.counterScale end,
-        function(value) WTF.SetShardCounterScale(value) end)
-    local counterScaleInitializer = Settings.CreateSlider(page, counterScale,
-        SliderOptions(WTF.FRAME_SCALE_MIN, WTF.FRAME_SCALE_MAX, WTF.FRAME_SCALE_STEP, true),
-        "How big the shard counter is, in percent. It keeps its center, and changes at once, also in combat.")
-    counterScaleInitializer:SetParentInitializer(counterInitializer, function() return WTF.db.shards.counter end)
 end
 
-local function AddStonesPage(parent)
-    local page = Settings.RegisterVerticalLayoutSubcategory(parent, STONES_TITLE)
-    local shownInitializer = Flag(page, "GRIMOIRE_STONES_SHOWN", "Show the Stones bar", "stones", "shown", true,
+local function AddStonesSection(page, layout)
+    Heading(layout, "Stones", "Soulstone and Healthstone buttons: left-click uses one, right-click creates one.")
+    Flag(page, "GRIMOIRE_STONES_SHOWN", "Show the Stones bar", "stones", "shown", true,
         "The bar with the Soulstone and Healthstone buttons. Changes in combat apply when combat ends. "
             .. "Its layout, size, button spacing and background are set in Edit Mode: select the bar there.",
         RefreshStones)
-    local scale = Proxy(page, "GRIMOIRE_STONES_SCALE", Settings.VarType.Number, "Stones bar size",
-        WTF.DEFAULT_FRAME_SCALE,
-        function() return WTF.db.stones.scale end,
-        function(value) WTF.SetStonesScale(value) end)
-    local scaleInitializer = Settings.CreateSlider(page, scale,
-        SliderOptions(WTF.FRAME_SCALE_MIN, WTF.FRAME_SCALE_MAX, WTF.FRAME_SCALE_STEP, true),
-        "How big the Stones bar is, in percent. It keeps its center. A change in combat applies when combat ends.")
-    scaleInitializer:SetParentInitializer(shownInitializer, function() return WTF.db.stones.shown end)
     Flag(page, "GRIMOIRE_STONES_GLOW", "Glow when a stone can be made", "stones", "glow", true,
         "A stone button glows when you carry none of that stone and can make one now: you know the spell and "
             .. "have a Soul Shard, and for a Soulstone none of yours is up and it is not cooling down.",
@@ -249,6 +221,32 @@ local function AddStonesPage(parent)
             .. "path, or resting in a city.")
     Flag(page, "GRIMOIRE_STONES_REMIND_HEALTHSTONE", "Healthstone reminders", "stones", "remindHealthstone", true,
         "A line in the alert window when you carry no Healthstone, at the same times.")
+end
+
+-- 0.3.5: the prep strip (Strip.lua), a choice; on or off after a reload.
+local function AddStripSection(page, layout)
+    Heading(layout, "Prep strip", "The Stones buttons, the shard counter, and the reminder icons in one strip.")
+    Flag(page, "GRIMOIRE_STRIP_ENABLED", "Join them in one strip", "strip", "enabled", false,
+        "The Stones buttons, the shard counter, and the reminder icons (Demon Armor, demon) in one bar that moves "
+            .. "and is styled as one in Edit Mode: layout, size, button spacing, background. Each keeps its slot "
+            .. "while its switch is on. Off, each is its own frame. Takes effect after a reload.")
+    if type(CreateSettingsButtonInitializer) == "function" and type(layout) == "table"
+            and type(layout.AddInitializer) == "function" then
+        layout:AddInitializer(CreateSettingsButtonInitializer("Apply the strip choice", "Reload now", function()
+            if InCombatLockdown() then
+                WTF.Report("The interface reloads out of combat.")
+                return
+            end
+            ReloadUI()
+        end, "Reloads the interface (a short loading screen), out of combat only.", true))
+    end
+end
+
+local function AddShardsAndStonesPage(parent)
+    local page, layout = Settings.RegisterVerticalLayoutSubcategory(parent, SHARDS_TITLE)
+    AddShardsSection(page, layout)
+    AddStonesSection(page, layout)
+    AddStripSection(page, layout)
 end
 
 local function RefreshTracker()
@@ -310,71 +308,6 @@ local function AddDefaultTick(initializer, minValue, maxValue, default)
         PlaceTick(slider)
         tick:Show()
     end
-end
-
--- The tracker's sizes for one theme (Core's TRACKER_SIZE_SPECS), shown only
--- while that theme is chosen: the settings list checks shown predicates again
--- on each setting change (pinned Blizzard_SettingsPanel.lua:788,
--- Blizzard_Settings.lua:96). A change rebuilds the rows, out of combat.
-local function AddTrackerSizes(page, theme)
-    local function ShowFor(initializer)
-        if type(initializer.AddShownPredicate) == "function" then
-            initializer:AddShownPredicate(function() return WTF.db.tracker.theme == theme end)
-        end
-    end
-    local prefix = "GRIMOIRE_TRACKER_" .. theme:upper() .. "_"
-    for _, spec in ipairs(WTF.TRACKER_SIZE_SPECS[theme]) do
-        local setting = Proxy(page, prefix .. spec.key:upper(), Settings.VarType.Number, spec.label, spec.default,
-            function() return WTF.db.tracker.sizes[theme][spec.key] end,
-            function(value) WTF.SetTrackerSize(theme, spec.key, value) end)
-        local options = Settings.CreateSliderOptions(spec.min, spec.max, spec.step)
-        if type(MinimalSliderWithSteppersMixin) == "table" and type(options.SetLabelFormatter) == "function" then
-            options:SetLabelFormatter(MinimalSliderWithSteppersMixin.Label.Right, spec.percent
-                and function(value) return string.format("%d%%", value) end or nil)
-        end
-        local initializer = Settings.CreateSlider(page, setting, options,
-            (spec.tooltip or ("The DoT tracker's " .. spec.label:lower() .. " in the "
-                .. (theme == "bars" and "Bars" or "Compact") .. " theme."))
-                .. " A change in combat applies when combat ends.")
-        AddDefaultTick(initializer, spec.min, spec.max, spec.default)
-        ShowFor(initializer)
-    end
-    local position = Proxy(page, prefix .. "NAMEPOSITION", Settings.VarType.String, "Name position",
-        WTF.TRACKER_NAME_POSITIONS[theme][1].key,
-        function() return WTF.db.tracker.sizes[theme].namePosition end,
-        function(value) WTF.SetTrackerSize(theme, "namePosition", value) end)
-    ShowFor(Settings.CreateDropdown(page, position, function()
-        local container = Settings.CreateControlTextContainer()
-        for _, choice in ipairs(WTF.TRACKER_NAME_POSITIONS[theme]) do
-            container:Add(choice.key, choice.label)
-        end
-        return container:GetData()
-    end, "Where the mob's name sits in each row."))
-end
-
--- A panel's own settings (author): its color, then its opacity.
-local function AddPanelSection(page, layout, panel, colors)
-    Heading(layout, panel.heading, "Settings for the DoT tracker's " .. panel.name .. " only.")
-    local color = Proxy(page, "GRIMOIRE_PANEL_COLOR_" .. panel.key:upper(), Settings.VarType.String, colors.label,
-        colors.color,
-        function() return WTF.db.tracker.panelColors[panel.key] end,
-        function(value)
-            WTF.db.tracker.panelColors[panel.key] = WTF.SanitizeColor(value, colors.color)
-            if WTF.ApplyPanelColors then
-                WTF.ApplyPanelColors()
-            end
-        end)
-    Settings.CreateColorSwatch(page, color, panel.key == "list"
-        and "The row border and health fill of the other mobs' rows. It changes at once, also in combat."
-        or "The outline and health fill of the " .. panel.name .. ". It changes at once, also in combat.")
-    local setting = Proxy(page, "GRIMOIRE_TRACKER_OPACITY_" .. panel.key:upper(), Settings.VarType.Number,
-        panel.label, WTF.DEFAULT_PANEL_OPACITY,
-        function() return WTF.db.tracker.panelOpacity[panel.key] end,
-        function(value) WTF.SetTrackerPanelOpacity(panel.key, value) end)
-    local initializer = Settings.CreateSlider(page, setting,
-        SliderOptions(WTF.PANEL_OPACITY_MIN, WTF.PANEL_OPACITY_MAX, 5, true),
-        "How solid the " .. panel.name .. " is, rows and all, in percent. It changes at once, also in combat.")
-    AddDefaultTick(initializer, WTF.PANEL_OPACITY_MIN, WTF.PANEL_OPACITY_MAX, WTF.DEFAULT_PANEL_OPACITY)
 end
 
 -- DoT damage prediction (John, 1.4.0): greyed where the Toolkit makes no
@@ -450,9 +383,10 @@ local function AddPredictSection(page, layout)
             return container:GetData()
         end, tooltip .. PREDICT_NEEDS)
     end
-    local fill = Choice("GRIMOIRE_PREDICT_FILL", "Block fill", "fill", WTF.PREDICT_FILLS, "stripes",
-        "Stripes: diagonal stripes. Solid: one flat color. Bar texture: the texture of the bar it sits on. "
-            .. "The same look on the target frame, nameplates, and DoT tracker rows.")
+    local fill = Choice("GRIMOIRE_PREDICT_FILL", "Block style", "fill", WTF.PREDICT_FILLS, "stripes",
+        "Dyre's stripes: diagonal stripes. WoW bar: the game's own texture of the bar it sits on, in the block's "
+            .. "color. Solid color: one flat color. The same look on the target frame, nameplates, and DoT "
+            .. "tracker rows.")
     local color = Choice("GRIMOIRE_PREDICT_COLOR", "Block color", "color", WTF.PREDICT_COLORS, "purple",
         "The block's color. On a bar of the same color, as a DoT tracker row in the panel's purple, the block is "
             .. "drawn lighter, so it stands out.")
@@ -547,46 +481,40 @@ local function AddRecastSection(page, layout)
             .. "the new DoT lands before the old one's last tick.")
     AddDefaultTick(lead, WTF.RECAST_LEAD_MIN, WTF.RECAST_LEAD_MAX, WTF.DEFAULT_RECAST_LEAD)
     lead:SetParentInitializer(enabled, function() return WTF.db.recast.enabled end)
-    for _, initializer in ipairs({enabled, lead}) do
+    -- 0.3.5: the mark's look.
+    local styleSetting = Proxy(page, "GRIMOIRE_RECAST_STYLE", Settings.VarType.String, "Cue look", "edges",
+        function() return WTF.db.recast.style end,
+        function(value)
+            WTF.db.recast.style = WTF.SanitizeChoice(value, WTF.RECAST_STYLES, "edges")
+            Refresh()
+        end)
+    local style = Settings.CreateDropdown(page, styleSetting, function()
+        local container = Settings.CreateControlTextContainer()
+        for _, choice in ipairs(WTF.RECAST_STYLES) do
+            container:Add(choice.key, choice.label)
+        end
+        return container:GetData()
+    end, "Yellow edges: a pulsing yellow frame on the DoT's icon. Gold glow: the soft gold glow of the Stones "
+        .. "buttons around it.")
+    style:SetParentInitializer(enabled, function() return WTF.db.recast.enabled end)
+    for _, initializer in ipairs({enabled, lead, style}) do
         if type(initializer.AddModifyPredicate) == "function" then
             initializer:AddModifyPredicate(function() return WTF.PredictAvailable() end)
         end
     end
 end
 
--- Sections (author): General (what every panel shares) first, then one per
--- panel: Target, Focus, and Others; then DoT damage prediction.
+-- 0.3.5: the tracker's look (theme, sizes, outline, mob health, panel colors
+-- and opacity) is in its Edit Mode dialogs; this page keeps what it does:
+-- the nameplate dots, the curse slot, prediction, and the recast cue.
 local function AddTrackerPage(parent)
     local page, layout = Settings.RegisterVerticalLayoutSubcategory(parent, TRACKER_TITLE)
-    Heading(layout, "General", "Settings that every DoT tracker panel shares, and the nameplate dots.")
-    local theme = Proxy(page, "GRIMOIRE_TRACKER_THEME", Settings.VarType.String, "Theme", "compact",
-        function() return WTF.db.tracker.theme end,
-        function(value) WTF.SetTrackerTheme(value) end)
-    Settings.CreateDropdown(page, theme, function()
-        local container = Settings.CreateControlTextContainer()
-        container:Add("compact", "Compact")
-        container:Add("bars", "Bars")
-        return container:GetData()
-    end, "Compact: a row per mob with an icon per spell. Bars: a block per mob with a bar per spell you know, "
-        .. "draining as its time runs out. A change in combat applies when combat ends.")
-    -- The pinned rows' outline width (John, 2026-11-11; Dyre's Toolkit 2.8.0).
-    local outline = Proxy(page, "GRIMOIRE_TRACKER_OUTLINE_WIDTH", Settings.VarType.Number, "Target and focus outline",
-        WTF.DEFAULT_OUTLINE_WIDTH,
-        function() return WTF.db.tracker.outlineWidth end,
-        function(value) WTF.SetTrackerOutlineWidth(value) end)
-    local outlineInitializer = Settings.CreateSlider(page, outline,
-        SliderOptions(WTF.OUTLINE_WIDTH_MIN, WTF.OUTLINE_WIDTH_MAX, 1, Pixels),
-        "How thick the solid outline around the target (purple) and focus (red) rows is, in pixels. 0 hides it. "
-            .. "A change in combat applies when combat ends."
-            .. (WTF.TrackerOutlineAvailable() and "" or " Unavailable: reinstall every Grimoire file."))
-    AddDefaultTick(outlineInitializer, WTF.OUTLINE_WIDTH_MIN, WTF.OUTLINE_WIDTH_MAX, WTF.DEFAULT_OUTLINE_WIDTH)
-    if type(outlineInitializer.AddModifyPredicate) == "function" then
-        outlineInitializer:AddModifyPredicate(function() return WTF.TrackerOutlineAvailable() end)
-    end
+    Heading(layout, "Nameplate dots", "A bubble of DoT dots above each hostile nameplate.")
     local dotsInitializer = Flag(page, "GRIMOIRE_TRACKER_PLATE_DOTS", "Show DoT dots on nameplates", "tracker",
         "plateDots", false,
         "In combat, a bubble above each hostile nameplate with a dot per DoT you know: colored while it is up, "
-            .. "grey while it is missing. Needs at least one DoT you know. The DoTs page chooses the dots.",
+            .. "grey while it is missing. Needs at least one DoT you know. The DoT Order and Colors page chooses "
+            .. "the dots.",
         RefreshPlateDots)
     if type(dotsInitializer.AddModifyPredicate) == "function" then
         dotsInitializer:AddModifyPredicate(function() return WTF.HasTrackableDots() end)
@@ -618,39 +546,6 @@ local function AddTrackerPage(parent)
     end)
     AddDefaultTick(opacityInitializer, WTF.PLATE_DOTS_OPACITY_MIN, WTF.PLATE_DOTS_OPACITY_MAX,
         WTF.DEFAULT_PLATE_DOTS_OPACITY)
-    local health = Proxy(page, "GRIMOIRE_TRACKER_HEALTH", Settings.VarType.Boolean, "Show mob health", false,
-        function() return WTF.db.tracker.health end,
-        function(value) WTF.SetTrackerHealth("health", value) end)
-    local healthInitializer = Settings.CreateCheckbox(page, health,
-        "Each mob's name line in the DoT tracker is its health bar, in the panel's color, also in combat. "
-            .. "A change in combat applies when combat ends.")
-    local healthText = Proxy(page, "GRIMOIRE_TRACKER_HEALTH_TEXT", Settings.VarType.String, "Health text", "none",
-        function() return WTF.db.tracker.healthText end,
-        function(value) WTF.SetTrackerHealth("healthText", value) end)
-    local textInitializer = Settings.CreateDropdown(page, healthText, function()
-        local container = Settings.CreateControlTextContainer()
-        for _, choice in ipairs(WTF.TRACKER_HEALTH_TEXTS) do
-            container:Add(choice.key, choice.label)
-        end
-        return container:GetData()
-    end, "The mob's health as text after its name: its number, its percent, or both.")
-    textInitializer:SetParentInitializer(healthInitializer, function() return WTF.db.tracker.health end)
-    AddTrackerSizes(page, "compact")
-    AddTrackerSizes(page, "bars")
-    -- Pinned Blizzard_SettingControls.lua:1014.
-    if type(CreateSettingsButtonInitializer) == "function" and type(layout) == "table"
-            and type(layout.AddInitializer) == "function" then
-        layout:AddInitializer(CreateSettingsButtonInitializer("Tracker size", "Reset size", function()
-            WTF.SetTrackerSize(WTF.db.tracker.theme, nil)
-        end, "Back to the theme's own sizes and name position.", true))
-    end
-    local colors = {}
-    for _, entry in ipairs(WTF.TRACKER_PANEL_COLORS) do
-        colors[entry.key] = entry
-    end
-    for _, panel in ipairs(WTF.TRACKER_PANELS) do
-        AddPanelSection(page, layout, panel, colors[panel.key])
-    end
     AddCurseSection(page, layout)
     AddPredictSection(page, layout)
     AddRecastSection(page, layout)
@@ -939,10 +834,6 @@ local function Seconds(value)
     return string.format("%d s", value)
 end
 
-local function Plain(value)
-    return tostring(value)
-end
-
 local function Slider(page, variable, name, default, getValue, setValue, minValue, maxValue, step, format, tooltip)
     local setting = Proxy(page, variable, Settings.VarType.Number, name, default, getValue, setValue)
     return Settings.CreateSlider(page, setting, SliderOptions(minValue, maxValue, step, format), tooltip)
@@ -981,37 +872,15 @@ local function AddAlertsPage(parent)
             WTF.db.alerts.fade = WTF.SanitizeWhole(value, WTF.ALERT_FADE_MIN, WTF.ALERT_FADE_MAX, WTF.DEFAULT_ALERT_FADE)
             WTF.RefreshAlerts()
         end, WTF.ALERT_FADE_MIN, WTF.ALERT_FADE_MAX, 1, Seconds, "How long a line takes to fade out.")
-    Slider(page, "GRIMOIRE_ALERTS_LINES", "Lines", WTF.DEFAULT_ALERT_LINES,
-        function() return WTF.db.alerts.lines end,
-        function(value)
-            WTF.db.alerts.lines = WTF.SanitizeWhole(value, WTF.ALERT_LINES_MIN, WTF.ALERT_LINES_MAX,
-                WTF.DEFAULT_ALERT_LINES)
-            WTF.RefreshAlerts()
-        end, WTF.ALERT_LINES_MIN, WTF.ALERT_LINES_MAX, 1, Plain, "At most this many lines at once.")
-    Slider(page, "GRIMOIRE_ALERTS_BACKGROUND", "Background opacity", WTF.DEFAULT_ALERT_BACKGROUND,
-        function() return WTF.db.alerts.background end,
-        function(value)
-            WTF.db.alerts.background = WTF.SanitizeWhole(value, WTF.ALERT_BACKGROUND_MIN, WTF.ALERT_BACKGROUND_MAX,
-                WTF.DEFAULT_ALERT_BACKGROUND)
-            WTF.RefreshAlerts()
-        end, WTF.ALERT_BACKGROUND_MIN, WTF.ALERT_BACKGROUND_MAX, 5, true,
-        "A dark panel behind the lines. 0 (the default) shows the text alone; 25% is 75% transparent.")
-    Slider(page, "GRIMOIRE_ALERTS_SCALE", "Window size", WTF.DEFAULT_FRAME_SCALE,
-        function() return WTF.db.alerts.scale end,
-        function(value) WTF.SetAlertsScale(value) end,
-        WTF.FRAME_SCALE_MIN, WTF.FRAME_SCALE_MAX, WTF.FRAME_SCALE_STEP, true, "How big the alert text is.")
     Heading(layout, "Reminders", "Out of combat. Each has an icon you click to cast.")
     Flag(page, "GRIMOIRE_REMIND_ARMOR", "Demon Armor reminder", "reminders", "armor", true,
         "An icon and a line while neither Demon Armor nor Demon Skin is on you, and a line a minute before it "
             .. "runs out. Click the icon to cast it. The line repeats after 2, 5, then every 15 minutes, and "
             .. "stays quiet while you are dead, on a flight path, or resting in a city.",
         function() WTF.RefreshReminders() end)
-    Flag(page, "GRIMOIRE_REMIND_DEMON", "Demon reminder", "reminders", "demon", true,
-        "An icon while you have no demon out (hidden while mounted), and a line after combat. Click it to summon "
-            .. "your last demon. The line repeats and stays quiet like the armor's.",
-        function() WTF.RefreshReminders() end)
     Flag(page, "GRIMOIRE_REMIND_GLOW", "Reminder icons glow", "reminders", "glow", true,
-        "The armor and demon icons glow while they show, so they catch the eye.",
+        "The armor and demon icons glow while they show, so they catch the eye. The demon reminder is on the "
+            .. "Demon page.",
         function() WTF.RefreshReminders() end)
     Heading(layout, "In combat")
     Flag(page, "GRIMOIRE_THREAT_ENABLED", "Threat warning", "threat", "enabled", true,
@@ -1022,12 +891,6 @@ local function AddAlertsPage(parent)
             .. "turned yet.")
     Flag(page, "GRIMOIRE_THREAT_SOUNDS", "Threat sounds", "threat", "sounds", true,
         "The sounds of the two threat lines.")
-    Flag(page, "GRIMOIRE_PET_DIED", "Demon died", "pet", "died", true,
-        "A red line and a sound when your demon dies in combat, and when Enslave Demon breaks.")
-    Flag(page, "GRIMOIRE_PET_TAUNT", "Pet taunt warning", "pet", "taunt", true,
-        "In a group where you are not the tank: a yellow line when your demon's taunt (Torment, Suffering, "
-            .. "Anguish) is on autocast, and once more as a fight starts. Checked out of combat.",
-        function() WTF.RefreshPetTaunt() end)
     Flag(page, "GRIMOIRE_PROCS_SOUND", "Nightfall sound", "procs", "sound", true,
         "The game plays the Imp's spell chirp the moment Nightfall (Shadow Trance) lands, also in combat.",
         ApplyProcSounds)
@@ -1045,14 +908,25 @@ local function AddAlertsPage(parent)
             function(value) WTF.db.cooldowns.spells[def.key] = value == true end)
         Settings.CreateCheckbox(page, setting, "A line when " .. def.label .. " is ready again.")
     end
-    Heading(layout, "Shield", "A crescent beside your character with your remaining absorb: Shadow Ward, "
-        .. "Sacrifice, or any shield on you. From Dyre's Shields Up.")
-    Flag(page, "GRIMOIRE_SHIELD_ENABLED", "Shield display", "shield", "enabled", true,
-        "Shows while a shield is on you. Its style (arc or flat rows), side, and sizes are set in Edit Mode: "
-            .. "select it there.",
-        function() WTF.ShieldDisplay.Refresh() end)
-    Flag(page, "GRIMOIRE_SHIELD_NUMBER", "Show the absorb number", "shield", "number", true,
-        "The amount left, under the crescent.", function() WTF.ShieldDisplay.Refresh() end)
+end
+
+-- 0.3.5: your demon's reminder, warnings, and pet bar on one page.
+local function AddDemonPage(parent)
+    local page, layout = Settings.RegisterVerticalLayoutSubcategory(parent, DEMON_TITLE)
+    Heading(layout, "Your demon")
+    Flag(page, "GRIMOIRE_REMIND_DEMON", "Demon reminder", "reminders", "demon", true,
+        "Out of combat: an icon while you have no demon out (hidden while mounted), and a line after combat. "
+            .. "Click it to summon your last demon. The line repeats and stays quiet like the armor's.",
+        function() WTF.RefreshReminders() end)
+    Flag(page, "GRIMOIRE_PET_DIED", "Demon died", "pet", "died", true,
+        "A red line and a sound when your demon dies in combat, and when Enslave Demon breaks.")
+    Flag(page, "GRIMOIRE_PET_TAUNT", "Pet taunt warning", "pet", "taunt", true,
+        "In a group where you are not the tank: a yellow line when your demon's taunt (Torment, Suffering, "
+            .. "Anguish) is on autocast, and once more as a fight starts. Checked out of combat.",
+        function() WTF.RefreshPetTaunt() end)
+    Flag(page, "GRIMOIRE_PET_KEY_LABELS", "Pet bar key labels at normal size", "keyLabels", "petNormal", true,
+        "Edit Mode's Icon Size makes the pet bar's key labels grow with its buttons. With this on they stay the "
+            .. "size of your other bars' labels.", function() WTF.RefreshKeyLabels() end)
 end
 
 -- Grimoire 0.2.1: the background diagnostics (Probe.lua) on a page of their own.
@@ -1102,21 +976,22 @@ function WTF.InitializeOptions()
         "Bars for the mobs you Fear or Banish, with their time left, and a Focus box above them with your "
             .. "focus's Fear. Click the Focus box to fear your focus again, or a Banish row to banish your focus "
             .. "again.", RefreshControl)
-    Flag(category, "GRIMOIRE_PET_KEY_LABELS", "Pet bar key labels at normal size", "keyLabels", "petNormal", true,
-        "Edit Mode's Icon Size makes the pet bar's key labels grow with its buttons. With this on they stay the "
-            .. "size of your other bars' labels.", function() WTF.RefreshKeyLabels() end)
+    Flag(category, "GRIMOIRE_SHIELD_ENABLED", "Shield display", "shield", "enabled", true,
+        "A crescent or bars with your remaining absorb while a shield is on you: Shadow Ward, Sacrifice, or any "
+            .. "shield. From Dyre's Shields Up.",
+        function() WTF.ShieldDisplay.Refresh() end)
     -- 0.3.0: frames move in the game's Edit Mode (EditMode.lua), so the
-    -- unlock switch and the grid are gone.
-    Heading(layout, "Moving frames", "Grimoire's frames move in the game's Edit Mode: press Esc, then Edit Mode. "
+    -- unlock switch and the grid are gone. 0.3.5: their look is set there too.
+    Heading(layout, "Edit Mode", "Grimoire's frames move in the game's Edit Mode: press Esc, then Edit Mode. "
         .. "Each shows there with its name and a sample. Drag it, or select it and type exact coordinates. "
-        .. "/grim reset puts them all back.")
-    AddShardPage(category)
-    AddStonesPage(category)
+        .. "Select it to set its look: size, layout, theme, colors. /grim reset puts them all back in place.")
+    AddShardsAndStonesPage(category)
     AddTrackerPage(category)
     local dotsPage = CreateDotsPage()
     WTF.dotsPage = dotsPage
     Settings.RegisterCanvasLayoutSubcategory(category, dotsPage, DOTS_TITLE)
     AddControlPage(category)
+    AddDemonPage(category)
     AddAlertsPage(category)
     AddDiagnosticsPage(category)
     Settings.RegisterAddOnCategory(category)

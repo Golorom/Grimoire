@@ -742,7 +742,13 @@ function DyresToolkit.CreateDotTracker(spec)
     -- fill. All are the tracker's own, so they change at once, also in combat.
     local function ColorPanel(row)
         local r, g, b = PanelColor(row.panelKey or "list")
-        row:SetBackdropBorderColor(r, g, b)
+        -- Grimoire: the border can take a color of its own (the gold rim style).
+        local border = spec.borderColor and spec.borderColor(row.panelKey or "list")
+        if type(border) == "table" then
+            row:SetBackdropBorderColor(border[1], border[2], border[3])
+        else
+            row:SetBackdropBorderColor(r, g, b)
+        end
         if row.outline then
             row.outline:SetBackdropBorderColor(r, g, b)
         end

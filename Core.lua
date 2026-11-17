@@ -138,6 +138,7 @@ local REQUIRED_NAMESPACE = {
     "InitializeOptions", "OpenSettings",
     "SanitizeAlerts", "InitializeAlerts", "RefreshAlerts", "Alert", "TestAlerts", "ResetAlertsPosition",
     "SanitizeReminders", "InitializeReminders", "RefreshReminders", "ResetRemindersPosition",
+    "SanitizeStrip", "InitializeStrip", "StripActive", "JoinStrip", "RefreshStrip", "ResetStripPosition",
     "SanitizeThreat", "InitializeThreat", "SanitizePet", "InitializePet", "RefreshPetTaunt",
     "QuietTime", "ForgetAlerts",
     "SanitizeProcs", "InitializeProcs", "RefreshProcs", "ResetProcsPosition",
@@ -302,6 +303,16 @@ local function HexColor(hex)
     return tonumber(hex:sub(3, 4), 16) / 255, tonumber(hex:sub(5, 6), 16) / 255, tonumber(hex:sub(7, 8), 16) / 255
 end
 
+WTF.HexToRGB = HexColor
+
+-- r, g, b from 0 to 1 as a saved AARRGGBB color, fully opaque.
+function WTF.RGBToHex(r, g, b)
+    local function Byte(value)
+        return math.max(0, math.min(255, math.floor((tonumber(value) or 0) * 255 + 0.5)))
+    end
+    return string.format("ff%02x%02x%02x", Byte(r), Byte(g), Byte(b))
+end
+
 function WTF.SlotColor(key)
     return HexColor(WTF.db.tracker.colors[key])
 end
@@ -381,6 +392,11 @@ WTF.TRACKER_SIZE_SPECS = {
         {key = "textScale", label = "Text size", min = 50, max = 200, step = 5, default = 100, percent = true},
     },
 }
+-- 0.3.5: the DoT tracker's and the Control bar's look: Dyre's, or a gold rim
+-- as the game's own frames have.
+WTF.FRAME_STYLES = {{key = "dyre", label = "Dyre's"}, {key = "gold", label = "Gold rim"}}
+WTF.GOLD_RIM = {1, 0.82, 0}
+
 WTF.TRACKER_NAME_POSITIONS = {
     compact = {{key = "left", label = "Left"}, {key = "right", label = "Right"}, {key = "above", label = "Above"},
         {key = "below", label = "Below"}},
@@ -389,8 +405,9 @@ WTF.TRACKER_NAME_POSITIONS = {
 
 -- The DoT prediction block's look (John, 1.4.0), the same on every bar:
 -- the fill, a color preset, its opacity, and a thin outline.
-WTF.PREDICT_FILLS = {{key = "stripes", label = "Stripes"}, {key = "solid", label = "Solid"},
-    {key = "bar", label = "Bar texture"}}
+-- 0.3.5: shown as a style, Dyre's stripes or the game's own bar texture.
+WTF.PREDICT_FILLS = {{key = "stripes", label = "Dyre's stripes"}, {key = "bar", label = "WoW bar"},
+    {key = "solid", label = "Solid color"}}
 WTF.PREDICT_COLORS = {
     {key = "purple", label = "Purple", color = {0.64, 0.21, 0.93}},
     {key = "red", label = "Red", color = {1, 0.15, 0.15}},
@@ -515,6 +532,8 @@ function WTF.SanitizeDB(db)
         -- shows unless false.
         curseMode = tracker.curseMode == "smart" and "smart" or "last",
         curseMarker = tracker.curseMarker ~= false,
+        -- 0.3.5: Dyre's look ("dyre", default) or a gold border on each row ("gold").
+        style = WTF.SanitizeChoice(tracker.style, WTF.FRAME_STYLES, "dyre"),
     }
     for _, key in ipairs({"lastBane", "lastCurse", "lastControl"}) do
         db.tracker[key] = type(tracker[key]) == "string" and tracker[key] or nil
@@ -595,6 +614,7 @@ function WTF.SanitizeDB(db)
     if WTF.SanitizeAlerts then
         db.alerts = WTF.SanitizeAlerts(db.alerts, SanitizePosition)
         db.reminders = WTF.SanitizeReminders(db.reminders, SanitizePosition)
+        db.strip = WTF.SanitizeStrip(db.strip, SanitizePosition)
         db.threat = WTF.SanitizeThreat(db.threat)
         db.pet = WTF.SanitizePet(db.pet)
         db.procs = WTF.SanitizeProcs(db.procs, SanitizePosition)
@@ -701,6 +721,7 @@ function WTF.SetFramesLocked(locked)
     WTF.RefreshControl()
     WTF.RefreshAlerts()
     WTF.RefreshReminders()
+    WTF.RefreshStrip()
     WTF.RefreshProcs()
     WTF.ShieldDisplay.Refresh()
 end
@@ -828,6 +849,7 @@ function WTF.ResetPositions()
     WTF.ResetAlertsPosition()
     WTF.ResetRemindersPosition()
     WTF.ResetProcsPosition()
+    WTF.ResetStripPosition()
     WTF.ShieldDisplay.ResetPosition()
     if InCombatLockdown() then
         WTF.Report("Grimoire frames move back to their default places after combat.")
@@ -926,6 +948,8 @@ events:SetScript("OnEvent", function(self, event, loadedName)
     Start("Input hooks", InstallInputHooks)
     -- The alert window first: the other modules write to it.
     Start("Alert window", WTF.InitializeAlerts)
+    -- The prep strip before its members: they join it as they start.
+    Start("Prep strip", WTF.InitializeStrip)
     Start("Soul Shards", WTF.InitializeShards)
     Start("Stones", WTF.InitializeStones)
     if WTF.shared then

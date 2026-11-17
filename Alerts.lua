@@ -267,6 +267,34 @@ function WTF.ReportAlertsDebug()
     end
 end
 
+-- 0.3.5: the window's look in its Edit Mode dialog (was on the Alerts page).
+local function SetLook(key, value, minValue, maxValue, default)
+    WTF.db.alerts[key] = WTF.SanitizeWhole(value, minValue, maxValue, default)
+    WTF.RefreshAlerts()
+end
+
+local function AddEditModeSettings()
+    local function Saved(key) return function() return WTF.db.alerts[key] end end
+    WTF.AddEditModeSettings(holder, function(kinds)
+        return {
+            {kind = kinds.Slider, name = "Lines", default = WTF.DEFAULT_ALERT_LINES, minValue = WTF.ALERT_LINES_MIN,
+                maxValue = WTF.ALERT_LINES_MAX, valueStep = 1, get = Saved("lines"),
+                set = function(_, value)
+                    SetLook("lines", value, WTF.ALERT_LINES_MIN, WTF.ALERT_LINES_MAX, WTF.DEFAULT_ALERT_LINES)
+                end, desc = "At most this many lines at once."},
+            {kind = kinds.Slider, name = "Background opacity", default = WTF.DEFAULT_ALERT_BACKGROUND,
+                minValue = WTF.ALERT_BACKGROUND_MIN, maxValue = WTF.ALERT_BACKGROUND_MAX, valueStep = 5,
+                get = Saved("background"),
+                set = function(_, value)
+                    SetLook("background", value, WTF.ALERT_BACKGROUND_MIN, WTF.ALERT_BACKGROUND_MAX,
+                        WTF.DEFAULT_ALERT_BACKGROUND)
+                end, desc = "A dark panel behind the lines, in percent. 0 shows the text alone."},
+            WTF.EditModeSizeSetting(kinds, Saved("scale"), WTF.SetAlertsScale,
+                "How big the alert text is, in percent."),
+        }
+    end)
+end
+
 function WTF.InitializeAlerts()
     holder = CreateFrame("Frame", "GrimoireAlerts", UIParent)
     holder:SetSize(HOLDER_WIDTH, WTF.db.alerts.lines * LINE_HEIGHT + HOLDER_PADDING)
@@ -297,5 +325,6 @@ function WTF.InitializeAlerts()
     WTF.alertsFrame = holder
     holder:SetScale(WTF.db.alerts.scale / 100)
     Place()
+    AddEditModeSettings()
     WTF.RefreshAlerts()
 end

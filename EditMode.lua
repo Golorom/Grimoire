@@ -272,6 +272,14 @@ function WTF.AddEditModeSettings(frame, build)
     return true
 end
 
+-- A Size slider for a frame's dialog: get() returns the saved percent,
+-- set(percent) applies it.
+function WTF.EditModeSizeSetting(kinds, get, set, desc)
+    return {kind = kinds.Slider, name = "Size", default = WTF.DEFAULT_FRAME_SCALE, minValue = WTF.FRAME_SCALE_MIN,
+        maxValue = WTF.FRAME_SCALE_MAX, valueStep = WTF.FRAME_SCALE_STEP, get = get,
+        set = function(_, value) set(value) end, desc = desc or "In percent."}
+end
+
 -- Bars of buttons (0.3.3): the Stones bar and the reminder icons share one
 -- look and one set of Edit Mode settings: a row or a column, a size, the
 -- space between the buttons, and the brown panel with a gold border behind.
@@ -326,9 +334,7 @@ function WTF.AddButtonBarSettings(bar, options)
         return {
             {kind = kinds.Dropdown, name = "Layout", default = "horizontal", values = layouts, get = Get("layout"),
                 set = Look("layout"), desc = "A row or a column."},
-            {kind = kinds.Slider, name = "Size", default = WTF.DEFAULT_FRAME_SCALE, minValue = WTF.FRAME_SCALE_MIN,
-                maxValue = WTF.FRAME_SCALE_MAX, valueStep = WTF.FRAME_SCALE_STEP, get = Get("scale"),
-                set = function(_, value) options.setScale(value) end, desc = "In percent."},
+            WTF.EditModeSizeSetting(kinds, Get("scale"), options.setScale),
             {kind = kinds.Slider, name = "Button spacing", default = options.spacing,
                 minValue = WTF.STONES_SPACING_MIN, maxValue = WTF.STONES_SPACING_MAX, valueStep = 1,
                 get = Get("spacing"), set = Look("spacing"), desc = "The space between the buttons."},
@@ -383,6 +389,11 @@ function WTF.EditModeLines()
         lines[#lines + 1] = string.format("  %s: %s %s %s %s scale %.2f shown %s", editMode.names[frame],
             tostring(point), tostring(relativePoint), x and string.format("%.1f", x) or "?",
             y and string.format("%.1f", y) or "?", frame:GetScale(), tostring(frame:IsShown()))
+    end
+    if WTF.StripLines then
+        for _, line in ipairs(WTF.StripLines()) do
+            lines[#lines + 1] = line
+        end
     end
     return lines
 end

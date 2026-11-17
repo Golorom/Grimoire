@@ -16,6 +16,8 @@ local CONTROL_PRIORITY = 10
 local DEFAULT_POINT = {"CENTER", "CENTER", -260, -60}
 local SAMPLES = {"Fear (sample)", "Banish (sample)"}
 local FOCUS_RED = {0.9, 0.1, 0.1}
+-- The engine's own row border (Engine\Control.lua IDLE_BORDER), for Dyre's style.
+local DYRE_BORDER = {0.45, 0.35, 0.2}
 -- The engine's default look (WTF's Bars theme): the bar's size for its mover.
 local ROW_WIDTH, ROW_HEIGHT, ROW_GAP, ROWS = 200, 40, 4, 5
 local MARKERS_VERSION = 2
@@ -53,7 +55,8 @@ function WTF.SanitizeControl(saved, sanitizePosition)
     -- Grimoire: no raid markers, so none are kept (markerFor is always none).
     local clean = {enabled = saved.enabled ~= false, position = sanitizePosition(saved.position),
         scale = WTF.SanitizeControlScale(saved.scale), markers = {}, markersVersion = MARKERS_VERSION,
-        plateTimers = saved.plateTimers ~= false, macros = saved.macros ~= false}
+        plateTimers = saved.plateTimers ~= false, macros = saved.macros ~= false,
+        style = WTF.SanitizeChoice(saved.style, WTF.FRAME_STYLES, "dyre")}
     return clean
 end
 
@@ -137,6 +140,56 @@ function WTF.RefreshControl()
     end
 end
 
+-- 0.3.5: Dyre's borders, or gold on every row and the Focus box. Plain
+-- frames, so at once, also in combat.
+local function ApplyStyle()
+    if not control.available then
+        return
+    end
+    local gold = WTF.db.control.style == "gold"
+    local rowBorder = gold and WTF.GOLD_RIM or DYRE_BORDER
+    for _, row in ipairs(control.tracker.rows or {}) do
+        row:SetBackdropBorderColor(rowBorder[1], rowBorder[2], rowBorder[3])
+    end
+    local box = control.tracker.focusBox
+    if box and box.display then
+        local color = gold and WTF.GOLD_RIM or control.focusColor or FOCUS_RED
+        box.display:SetBackdropBorderColor(color[1], color[2], color[3])
+    end
+end
+
+function WTF.SetControlStyle(style)
+    WTF.db.control.style = WTF.SanitizeChoice(style, WTF.FRAME_STYLES, "dyre")
+    ApplyStyle()
+end
+
+function WTF.SetControlScale(percent)
+    WTF.db.control.scale = WTF.SanitizeControlScale(percent)
+    WTF.RefreshControl()
+end
+
+-- 0.3.5: the bar's look in its Edit Mode dialog (the size was on the page).
+function WTF.AddControlEditModeSettings(frame)
+    WTF.AddEditModeSettings(frame, function(kinds)
+        local styles = {}
+        for _, choice in ipairs(WTF.FRAME_STYLES) do
+            styles[#styles + 1] = {text = choice.label, value = choice.key}
+        end
+        return {
+            {kind = kinds.Slider, name = "Size", default = WTF.DEFAULT_CONTROL_SCALE,
+                minValue = WTF.CONTROL_SCALE_MIN, maxValue = WTF.CONTROL_SCALE_MAX, valueStep = WTF.CONTROL_SCALE_STEP,
+                get = function() return WTF.db.control.scale end,
+                set = function(_, value) WTF.SetControlScale(value) end,
+                desc = "In percent. A change in combat applies when combat ends."},
+            {kind = kinds.Dropdown, name = "Style", default = "dyre", values = styles,
+                get = function() return WTF.db.control.style end,
+                set = function(_, value) WTF.SetControlStyle(value) end,
+                desc = "Dyre's: a dark gold border, red on the Focus box. Gold rim: a gold border on every row "
+                    .. "and the Focus box, as the game's own frames have."},
+        }
+    end)
+end
+
 function WTF.ResetControlPosition()
     WTF.db.control.position = nil
     if control.available then
@@ -156,6 +209,7 @@ function WTF.InitializeControl()
     anchor:EnableMouse(false)
     WTF.RegisterMovable(anchor, function(position) WTF.db.control.position = position end,
         {name = "Grimoire Control bar", default = WTF.EditModeDefault(DEFAULT_POINT)})
+    WTF.AddControlEditModeSettings(anchor)
     Place()
     local color = FOCUS_RED
     if WTF.db.tracker and WTF.db.tracker.panelColors then
@@ -188,10 +242,12 @@ function WTF.InitializeControl()
         return
     end
     control.tracker = tracker
+    control.focusColor = color
     WTF.controlRows = tracker.rows
     WTF.controlFocusBox = tracker.focusBox
     WTF.fearPlateTimers = tracker.plateTimers
     control.available = true
+    ApplyStyle()
     WTF.RefreshControl()
 end
 

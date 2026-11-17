@@ -725,6 +725,7 @@ function DyresToolkit.CreateControlTracker(spec)
         CreateDisplay(display, look, "GameFontNormalSmall", def)
         local color = spec.focusBox.color or FOCUS_RED
         display:SetBackdropBorderColor(color[1], color[2], color[3])
+        box.display = display -- Grimoire: for the gold rim style (Control.lua).
         local container = DyresToolkit.CreateAuraContainer(display)
         container:SetPoint("TOPLEFT", display, "TOPLEFT")
         container:SetSize(1, 1)
