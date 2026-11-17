@@ -52,3 +52,11 @@ After a logout or `/reload`:
 ## Versions
 
 `## Version:` in `Grimoire.toc` is the version the login line prints. Bump it with every installed build and add an entry to `CHANGELOG.md`.
+
+## Releases
+
+The repository has two workflows. Tests run on every push. A release is made by pushing a tag:
+
+1. Set `## Version:` in `Grimoire.toc` and add the `## <version>` section to `CHANGELOG.md`.
+2. Commit, tag `v<version>`, push the tag.
+3. The Release workflow runs the tests, checks that the tag matches the TOC, builds `Grimoire-v<version>.zip` (the addon in a `Grimoire` folder, without `tests`, `docs` and `.github`) and publishes it as a GitHub release with that changelog section as its notes.
