@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.4.1 (2026-11-17)
+
+Changed
+- Plainer tooltips on the Cues page.
+
 ## 0.4.0 (2026-11-17)
 
 Added
