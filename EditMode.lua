@@ -6,7 +6,9 @@ local _, WTF = ...
 -- LibEditMode (p3lim; Libs\LibEditMode, embedded unmodified under its own
 -- license, in Grimoire's namespace so no other AddOn's copy is involved)
 -- adds each frame to Edit Mode. There it shows with its name, drags, takes
--- exact coordinates and arrow-key nudges, and has Reset Position.
+-- exact coordinates and arrow-key nudges, and has Reset Position. LibEditMode
+-- does not snap, so Grimoire does (0.3.1): a dropped frame snaps as the
+-- game's own do, while Edit Mode's "Snap to Elements" is on.
 --
 -- Entering Edit Mode shows every frame's sample, as the old unlock did, and
 -- leaving it hides them again (Core's SetFramesLocked). A frame has one place
@@ -61,6 +63,182 @@ local function SetEditing(editing)
     end
 end
 
+-- Snapping (0.3.1) ---------------------------------------------------------
+-- On a drop, each edge and the center line of the frame look for the nearest
+-- line within SNAP_RANGE: the grid's lines while the grid shows, the screen's
+-- edges and center, and the edges and center lines of other frames beside it
+-- (the game's Edit Mode frames and Grimoire's). Then LibEditMode saves the
+-- snapped place as usual.
+local SNAP_RANGE = 10
+
+-- left, right, top, bottom in UIParent's units.
+local function Bounds(frame)
+    if type(frame) ~= "table" or type(frame.GetCenter) ~= "function" then
+        return
+    end
+    local x, y = frame:GetCenter()
+    local width, height = frame:GetWidth(), frame:GetHeight()
+    if type(x) ~= "number" or type(y) ~= "number" or type(width) ~= "number" or type(height) ~= "number"
+        or WTF.IsSecret(x) or WTF.IsSecret(width) then
+        return
+    end
+    local ratio = frame:GetEffectiveScale() / UIParent:GetEffectiveScale()
+    x, y, width, height = x * ratio, y * ratio, width * ratio, height * ratio
+    return x - width / 2, x + width / 2, y + height / 2, y - height / 2
+end
+
+local function Manager()
+    local manager = rawget(_G, "EditModeManagerFrame")
+    return type(manager) == "table" and manager or nil
+end
+
+-- Edit Mode's "Snap to Elements"; on when the client does not say.
+function WTF.EditModeSnapEnabled()
+    local manager = Manager()
+    if manager and type(manager.IsSnapEnabled) == "function" then
+        local ok, enabled = pcall(manager.IsSnapEnabled, manager)
+        if ok then
+            return enabled ~= false
+        end
+    end
+    return true
+end
+
+-- The grid's center and spacing in UIParent's units, while it shows.
+local function Grid()
+    local manager = Manager()
+    local grid = manager and manager.Grid
+    if type(grid) ~= "table" or type(grid.IsShown) ~= "function" or not grid:IsShown() then
+        return
+    end
+    local spacing = grid.gridSpacing
+    if type(spacing) ~= "number" or spacing <= 0 then
+        return
+    end
+    local left, right, top, bottom = Bounds(grid)
+    if not left then
+        return
+    end
+    local ratio = grid:GetEffectiveScale() / UIParent:GetEffectiveScale()
+    return (left + right) / 2, (top + bottom) / 2, spacing * ratio
+end
+
+-- The other frames a frame can snap to: the game's Edit Mode frames and
+-- Grimoire's, those shown.
+local function Others(frame)
+    local others = {}
+    local manager = Manager()
+    local systems = manager and manager.registeredSystemFrames
+    if type(systems) == "table" then
+        for _, system in ipairs(systems) do
+            if type(system) == "table" and system ~= frame and type(system.IsShown) == "function"
+                and system:IsShown() then
+                others[#others + 1] = system
+            end
+        end
+    end
+    for _, other in ipairs(editMode.order) do
+        if other ~= frame and other:IsShown() then
+            others[#others + 1] = other
+        end
+    end
+    return others
+end
+
+function WTF.SnapFrame(frame)
+    local left, right, top, bottom = Bounds(frame)
+    if not left then
+        return false
+    end
+    local centerX, centerY = (left + right) / 2, (top + bottom) / 2
+    local bestX, bestY
+    local function TryX(edge, line)
+        local shift = line - edge
+        if math.abs(shift) <= SNAP_RANGE and (not bestX or math.abs(shift) < math.abs(bestX)) then
+            bestX = shift
+        end
+    end
+    local function TryY(edge, line)
+        local shift = line - edge
+        if math.abs(shift) <= SNAP_RANGE and (not bestY or math.abs(shift) < math.abs(bestY)) then
+            bestY = shift
+        end
+    end
+    local width, height = UIParent:GetWidth(), UIParent:GetHeight()
+    for _, line in ipairs({0, width / 2, width}) do
+        TryX(left, line)
+        TryX(centerX, line)
+        TryX(right, line)
+    end
+    for _, line in ipairs({0, height / 2, height}) do
+        TryY(bottom, line)
+        TryY(centerY, line)
+        TryY(top, line)
+    end
+    local gridX, gridY, spacing = Grid()
+    if gridX then
+        for _, edge in ipairs({left, centerX, right}) do
+            TryX(edge, gridX + math.floor((edge - gridX) / spacing + 0.5) * spacing)
+        end
+        for _, edge in ipairs({bottom, centerY, top}) do
+            TryY(edge, gridY + math.floor((edge - gridY) / spacing + 0.5) * spacing)
+        end
+    end
+    for _, other in ipairs(Others(frame)) do
+        local otherLeft, otherRight, otherTop, otherBottom = Bounds(other)
+        if otherLeft then
+            -- Side by side (close in height): line up left, right or centers.
+            if bottom <= otherTop + SNAP_RANGE and top >= otherBottom - SNAP_RANGE then
+                for _, line in ipairs({otherLeft, otherRight}) do
+                    TryX(left, line)
+                    TryX(right, line)
+                end
+                TryX(centerX, (otherLeft + otherRight) / 2)
+            end
+            -- One above the other (close in width): tops, bottoms or centers.
+            if left <= otherRight + SNAP_RANGE and right >= otherLeft - SNAP_RANGE then
+                for _, line in ipairs({otherTop, otherBottom}) do
+                    TryY(top, line)
+                    TryY(bottom, line)
+                end
+                TryY(centerY, (otherTop + otherBottom) / 2)
+            end
+        end
+    end
+    if not bestX and not bestY then
+        return false
+    end
+    local ratio = UIParent:GetEffectiveScale() / frame:GetEffectiveScale()
+    frame:ClearAllPoints()
+    frame:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", (left + (bestX or 0)) * ratio, (bottom + (bestY or 0)) * ratio)
+    return true
+end
+
+-- Grimoire's snap runs first on a drop, then LibEditMode's own handler,
+-- which reads the snapped place, shows its numbers and saves it.
+local function SnapOnDrop(lib, frame)
+    local selections = lib.frameSelections
+    local selection = type(selections) == "table" and selections[frame]
+    if not selection or selection.grimoireSnap or type(selection.GetScript) ~= "function" then
+        return
+    end
+    local original = selection:GetScript("OnDragStop")
+    if type(original) ~= "function" then
+        return
+    end
+    selection.grimoireSnap = true
+    selection:SetScript("OnDragStop", function(self, ...)
+        if not InCombatLockdown() and WTF.EditModeSnapEnabled() then
+            frame:StopMovingOrSizing()
+            local ok, failure = pcall(WTF.SnapFrame, frame)
+            if not ok then
+                editMode.snapFailure = tostring(failure)
+            end
+        end
+        return original(self, ...)
+    end)
+end
+
 -- info: {name = shown in Edit Mode, default = {point, x, y} for Reset
 -- Position}. Without a name, the frame's own; without a default, the center.
 function WTF.RegisterMovable(frame, save, info)
@@ -75,10 +253,23 @@ function WTF.RegisterMovable(frame, save, info)
     local lib = Lib()
     if lib then
         lib:AddFrame(frame, Moved, default, name)
+        SnapOnDrop(lib, frame)
         if editMode.editing then
             RaiseHighlights(lib)
         end
     end
+end
+
+-- Settings in a frame's Edit Mode dialog (LibEditMode's, as the game's own
+-- frames have). build(kinds) returns the list, kinds being LibEditMode's
+-- SettingType. Nothing happens without Edit Mode.
+function WTF.AddEditModeSettings(frame, build)
+    local lib = Lib()
+    if not lib or type(lib.AddFrameSettings) ~= "function" or type(lib.SettingType) ~= "table" then
+        return false
+    end
+    lib:AddFrameSettings(frame, build(lib.SettingType))
+    return true
 end
 
 -- A default place given the way the modules give theirs ({"CENTER", "CENTER", x, y}).
@@ -105,17 +296,10 @@ function WTF.ScaleKeepingCenter(frame, scale)
     end
 end
 
-local HELP = "Move Grimoire's frames in the game's Edit Mode: press Esc, then Edit Mode."
-local NO_EDIT_MODE = "This client has no Edit Mode, so Grimoire's frames stay where they are."
-
--- /grim unlock and /grim lock, kept for the habit.
-function WTF.ShowEditModeHelp()
-    WTF.Report(Lib() and HELP or NO_EDIT_MODE)
-end
-
 function WTF.EditModeLines()
-    local lines = {string.format("edit mode available=%s editing=%s frames=%d", tostring(Lib() ~= nil),
-        tostring(editMode.editing), #editMode.order)}
+    local lines = {string.format("edit mode available=%s editing=%s frames=%d snap=%s%s", tostring(Lib() ~= nil),
+        tostring(editMode.editing), #editMode.order, tostring(WTF.EditModeSnapEnabled()),
+        editMode.snapFailure and (" failure=" .. editMode.snapFailure) or "")}
     for _, frame in ipairs(editMode.order) do
         local point, _, relativePoint, x, y = frame:GetPoint(1)
         lines[#lines + 1] = string.format("  %s: %s %s %s %s scale %.2f shown %s", editMode.names[frame],

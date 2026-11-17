@@ -119,8 +119,8 @@ local REQUIRED_NAMESPACE = {
     "RefreshShardCounter", "ResetShardCounterPosition",
     "CheckStoneCapabilities", "InitializeStones", "ResetStonesPosition", "ReportStoneDebug",
     "ReportStoneStatus", "RemindStones", "ApplyStoneMacros", "AddInputHandler", "RunOnNextInput",
-    "Warn", "RegisterMovable", "BeginDrag", "EndDrag", "ScaleKeepingCenter", "ShowEditModeHelp",
-    "ReportEditModeDebug", "EditModeDefault",
+    "Warn", "RegisterMovable", "BeginDrag", "EndDrag", "ScaleKeepingCenter",
+    "ReportEditModeDebug", "EditModeDefault", "SnapFrame", "AddEditModeSettings",
     "CharacterMacrosAvailable", "WriteCharacterMacro",
     "DeleteCharacterMacro", "ApplyControlMacros",
     "InitializeControl", "RefreshControl", "ResetControlPosition", "ReportControlDebug", "SanitizeControl",
@@ -210,6 +210,11 @@ WTF.FRAME_SCALE_MIN = 50
 WTF.FRAME_SCALE_MAX = 150
 WTF.FRAME_SCALE_STEP = 5
 WTF.DEFAULT_FRAME_SCALE = 100
+-- The Stones bar's look, set in its Edit Mode dialog (0.3.1).
+WTF.STONES_LAYOUTS = {{key = "horizontal", label = "Horizontal"}, {key = "vertical", label = "Vertical"}}
+WTF.STONES_SPACING_MIN = 0
+WTF.STONES_SPACING_MAX = 20
+WTF.STONES_SPACING_DEFAULT = 6
 
 function WTF.SanitizeFrameScale(value)
     if not IsWholeNumber(value) then
@@ -473,6 +478,11 @@ function WTF.SanitizeDB(db)
         macros = stones.macros ~= false,
         remindSoulstone = stones.remindSoulstone ~= false,
         remindHealthstone = stones.remindHealthstone ~= false,
+        layout = WTF.SanitizeChoice(stones.layout, WTF.STONES_LAYOUTS, "horizontal"),
+        spacing = WTF.SanitizeWhole(stones.spacing, WTF.STONES_SPACING_MIN, WTF.STONES_SPACING_MAX,
+            WTF.STONES_SPACING_DEFAULT),
+        background = stones.background ~= false,
+        glow = stones.glow ~= false,
         soulstone = soulstone and type(soulstone.name) == "string" and type(soulstone.ends) == "number"
             and {name = soulstone.name, ends = soulstone.ends} or nil,
     }

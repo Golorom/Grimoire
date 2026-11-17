@@ -53,6 +53,8 @@ function WTF.SanitizeReminders(saved, sanitizePosition)
     return {
         armor = saved.armor ~= false,
         demon = saved.demon ~= false,
+        -- 0.3.1: the icons glow while they show for real.
+        glow = saved.glow ~= false,
         position = sanitizePosition(saved.position),
         lastDemon = type(saved.lastDemon) == "string" and saved.lastDemon or nil,
     }
@@ -193,6 +195,8 @@ local function Apply()
     armorButton.icon:SetTexture(SpellIcon(reminders.armor and reminders.armor.ids[1], ICONS.armor))
     armorButton.label = armorName
     armorButton:SetShown(missing or unlocked)
+    -- A glow while it shows because the armor is missing (not as Edit Mode's sample).
+    WTF.SetGlow(armorButton.glow, settings.glow and missing and not unlocked)
     -- No lines right after login, while mounted, or while they cannot help
     -- (dead, on a flight path, resting in a city): the icon still shows.
     local quiet = GetTime() < (reminders.quietUntil or 0) or Mounted() or WTF.QuietTime()
@@ -210,6 +214,8 @@ local function Apply()
     demonButton.label = summon
     local wanted = settings.demon and summon ~= nil
     RegisterStateDriver(demonButton, "visibility", unlocked and "show" or (wanted and PET_DRIVER or "hide"))
+    -- The icon shows only while no demon is out, and the glow with it.
+    WTF.SetGlow(demonButton.glow, settings.glow and wanted and not unlocked)
     if not wanted or HasLiveDemon() then
         Settle("demon")
     elseif not quiet then
@@ -286,6 +292,7 @@ local function CreateButton(kind, index)
     border:SetBackdropBorderColor(GOLD[1], GOLD[2], GOLD[3])
     button:SetScript("OnEnter", ShowTooltip)
     button:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    button.glow = WTF.CreateGlow(button)
     button:Hide()
     return button
 end

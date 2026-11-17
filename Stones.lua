@@ -27,11 +27,13 @@ local HEALTHSTONES = {
 local SOULSTONE_ICON = "Interface\\Icons\\INV_Misc_Orb_04"
 local HEALTHSTONE_ICON = "Interface\\Icons\\INV_Stone_04"
 local BUTTON_SIZE = 36
-local BUTTON_GAP = 6
 local PADDING = 6
 local GOLD = {1, 0.82, 0}
 local BROWN = {0.28, 0.16, 0.07, 0.85}
 local DEFAULT_POINT = {"CENTER", "CENTER", 260, -140}
+local BACKDROP = {bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
+    edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border", edgeSize = 12,
+    insets = {left = 3, right = 3, top = 3, bottom = 3}}
 -- Secure buttons run PostClick for both the press and the release.
 local REPEAT_MESSAGE_SECONDS = 0.3
 -- Seconds a requested trade waits for the trade window to open.
@@ -45,6 +47,8 @@ local REQUIRED = {
 }
 
 local stones = {pending = false, lastMessage = nil, lastMessageTime = 0, tradeLog = {}}
+-- Defined with the stone status below; Refresh calls it.
+local UpdateGlow
 
 function WTF.CheckStoneCapabilities()
     for _, entry in ipairs(REQUIRED) do
@@ -373,6 +377,7 @@ end
 local function Refresh()
     ApplyActions()
     UpdateVisibility()
+    UpdateGlow()
 end
 WTF.RefreshStones = Refresh
 
@@ -598,8 +603,8 @@ end
 local function CreateStoneButton(bar, name, kind, index)
     local button = CreateFrame("Button", name, bar, "SecureActionButtonTemplate")
     button.kind = kind
+    button.index = index
     button:SetSize(BUTTON_SIZE, BUTTON_SIZE)
-    button:SetPoint("LEFT", bar, "LEFT", PADDING + (index - 1) * (BUTTON_SIZE + BUTTON_GAP), 0)
     button:RegisterForClicks("AnyUp", "AnyDown")
     -- Act on the release, as RestedXP does, so a release-only press (/click,
     -- where a client allows it) works with ActionButtonUseKeyDown on; mouse
@@ -619,7 +624,85 @@ local function CreateStoneButton(bar, name, kind, index)
     button:SetScript("PostClick", PostClick)
     button:SetScript("OnEnter", ShowTooltip)
     button:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    button.glow = WTF.CreateGlow(button)
     return button
+end
+
+-- The bar's look from its Edit Mode dialog: a row or a column, the space
+-- between the buttons, and the background. Secure buttons, so out of combat.
+local function ApplyBarLayout()
+    local bar = buttons.bar
+    if not bar then
+        return
+    end
+    if InCombatLockdown() then
+        stones.layoutPending = true
+        return
+    end
+    stones.layoutPending = false
+    local settings = WTF.db.stones
+    local vertical = settings.layout == "vertical"
+    local long = PADDING * 2 + BUTTON_SIZE * 2 + settings.spacing
+    local short = PADDING * 2 + BUTTON_SIZE
+    bar:SetSize(vertical and short or long, vertical and long or short)
+    for _, button in ipairs({buttons.soulstone, buttons.healthstone}) do
+        local offset = PADDING + (button.index - 1) * (BUTTON_SIZE + settings.spacing)
+        button:ClearAllPoints()
+        if vertical then
+            button:SetPoint("TOP", bar, "TOP", 0, -offset)
+        else
+            button:SetPoint("LEFT", bar, "LEFT", offset, 0)
+        end
+    end
+    if settings.background then
+        bar:SetBackdrop(BACKDROP)
+        bar:SetBackdropColor(BROWN[1], BROWN[2], BROWN[3], BROWN[4])
+        bar:SetBackdropBorderColor(GOLD[1], GOLD[2], GOLD[3])
+    else
+        bar:SetBackdrop(nil)
+    end
+end
+
+-- From the Edit Mode dialog: layout, spacing, background.
+function WTF.SetStonesLook(key, value)
+    local settings = WTF.db.stones
+    if key == "layout" then
+        settings.layout = WTF.SanitizeChoice(value, WTF.STONES_LAYOUTS, "horizontal")
+    elseif key == "spacing" then
+        settings.spacing = WTF.SanitizeWhole(value, WTF.STONES_SPACING_MIN, WTF.STONES_SPACING_MAX,
+            WTF.STONES_SPACING_DEFAULT)
+    elseif key == "background" then
+        settings.background = value ~= false
+    end
+    ApplyBarLayout()
+end
+
+local function AddStonesEditModeSettings(bar)
+    local function Getter(key)
+        return function() return WTF.db.stones[key] end
+    end
+    WTF.AddEditModeSettings(bar, function(kinds)
+        local layouts = {}
+        for _, choice in ipairs(WTF.STONES_LAYOUTS) do
+            layouts[#layouts + 1] = {text = choice.label, value = choice.key}
+        end
+        return {
+            {kind = kinds.Dropdown, name = "Layout", default = "horizontal", values = layouts, get = Getter("layout"),
+                set = function(_, value) WTF.SetStonesLook("layout", value) end,
+                desc = "A row or a column."},
+            {kind = kinds.Slider, name = "Size", default = WTF.DEFAULT_FRAME_SCALE, minValue = WTF.FRAME_SCALE_MIN,
+                maxValue = WTF.FRAME_SCALE_MAX, valueStep = WTF.FRAME_SCALE_STEP, get = Getter("scale"),
+                set = function(_, value) WTF.SetStonesScale(value) end,
+                desc = "In percent. The same as Stones bar size in Grimoire's settings."},
+            {kind = kinds.Slider, name = "Button spacing", default = WTF.STONES_SPACING_DEFAULT,
+                minValue = WTF.STONES_SPACING_MIN, maxValue = WTF.STONES_SPACING_MAX, valueStep = 1,
+                get = Getter("spacing"), set = function(_, value) WTF.SetStonesLook("spacing", value) end,
+                desc = "The space between the two buttons."},
+            {kind = kinds.Checkbox, name = "Background", default = true, get = Getter("background"),
+                set = function(_, value) WTF.SetStonesLook("background", value) end,
+                desc = "The brown panel with the gold border behind the buttons."},
+        }
+    end)
 end
 
 -- The bar holds secure buttons, so its size changes only out of combat; it
@@ -698,12 +781,60 @@ function WTF.OnStoneCast(event, ...)
     local name = (target == "" or IsYou(target)) and "you" or DisplayName(target)
     WTF.db.stones.soulstone = {name = name, ends = time() + SOULSTONE_SECONDS}
     WTF.ScheduleSoulstoneEnd()
+    UpdateGlow()
 end
 
 local function SoulstoneUp()
     local soulstone = WTF.db.stones.soulstone
     return soulstone and soulstone.ends > time() and soulstone or nil
 end
+
+-- Glow (0.3.1): a stone button glows when you carry none of that stone and
+-- can make one now: you know the spell, you have a Soul Shard, and for a
+-- Soulstone none of yours is up and the stone is not cooling down (one ready
+-- to use). The cooldown is read where the client allows; while it is hidden
+-- the last answer stays. A cooling Soulstone is checked again as it ends.
+local function Cooling(itemID)
+    local container = rawget(_G, "C_Container")
+    local getter = type(container) == "table" and container.GetItemCooldown or rawget(_G, "GetItemCooldown")
+    if type(getter) ~= "function" then
+        return false
+    end
+    local ok, start, duration = pcall(getter, itemID)
+    if not ok or WTF.IsSecret(start) or WTF.IsSecret(duration) then
+        return stones.soulCooling == true
+    end
+    -- More than a global cooldown is a real one.
+    local cooling = type(start) == "number" and type(duration) == "number" and start > 0 and duration > 2
+    if cooling and type(C_Timer) == "table" and type(C_Timer.After) == "function" then
+        C_Timer.After(math.max(0, start + duration - GetTime()) + 0.5, function() UpdateGlow() end)
+    end
+    return cooling
+end
+
+local function Shards()
+    return type(WTF.CountShards) == "function" and WTF.CountShards() or 0
+end
+
+UpdateGlow = function()
+    if not buttons.bar then
+        return
+    end
+    local settings = WTF.db.stones
+    local on = settings.enabled and settings.shown and settings.glow
+    local shard = Shards() > 0
+    local soulRank, healthRank = BestKnownRank(SOULSTONES), BestKnownRank(HEALTHSTONES)
+    local soul = on and shard and soulRank ~= nil and CountCarried(SOULSTONES) == 0 and not SoulstoneUp()
+    if soul then
+        stones.soulCooling = Cooling(soulRank.items[1])
+        soul = not stones.soulCooling
+    end
+    local health = on and shard and healthRank ~= nil and CountCarried(HEALTHSTONES) == 0
+    stones.glowing = {soulstone = soul == true, healthstone = health == true}
+    WTF.SetGlow(buttons.soulstone.glow, soul)
+    WTF.SetGlow(buttons.healthstone.glow, health)
+end
+WTF.RefreshStoneGlow = function() UpdateGlow() end
 
 -- One reminder line per kind, at most once per REMIND_INTERVAL.
 local function Remind(kind, message)
@@ -737,6 +868,7 @@ local function OnSoulstoneEnd()
         return
     end
     WTF.db.stones.soulstone = nil
+    UpdateGlow()
     if WTF.db.stones.enabled and WTF.db.stones.remindSoulstone then
         WTF.Alert("soulstone:ended", "Soulstone on " .. soulstone.name .. " ended.", "warn", {throttle = 0})
         status.reminded.soulstone = nil
@@ -807,6 +939,9 @@ events:SetScript("OnEvent", function(_, event, ...)
         if stones.scalePending then
             ApplyBarScale()
         end
+        if stones.layoutPending then
+            ApplyBarLayout()
+        end
         if stones.pending then
             Refresh()
         end
@@ -846,12 +981,6 @@ function WTF.InitializeStones()
         WTF.Report("Stone macros stay off: this client lacks " .. macros.missing .. ".")
     end
     local bar = CreateFrame("Frame", "GrimoireStones", UIParent, "BackdropTemplate")
-    bar:SetSize(PADDING * 2 + BUTTON_SIZE * 2 + BUTTON_GAP, PADDING * 2 + BUTTON_SIZE)
-    bar:SetBackdrop({bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
-        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border", edgeSize = 12,
-        insets = {left = 3, right = 3, top = 3, bottom = 3}})
-    bar:SetBackdropColor(BROWN[1], BROWN[2], BROWN[3], BROWN[4])
-    bar:SetBackdropBorderColor(GOLD[1], GOLD[2], GOLD[3])
     bar:SetMovable(true)
     bar:SetClampedToScreen(true)
     bar:EnableMouse(true)
@@ -861,6 +990,8 @@ function WTF.InitializeStones()
     buttons.bar = bar
     buttons.soulstone = CreateStoneButton(bar, "GrimoireSoulstone", "soulstone", 1)
     buttons.healthstone = CreateStoneButton(bar, "GrimoireHealthstone", "healthstone", 2)
+    ApplyBarLayout()
+    AddStonesEditModeSettings(bar)
     -- The saved place is in the bar's own scale, so the scale comes first.
     bar:SetScale(WTF.db.stones.scale / 100)
     PlaceBar(bar)
@@ -921,4 +1052,8 @@ function WTF.ReportStoneDebug()
     for _, name in pairs(WTF.STONE_MACROS) do
         WTF.Report(string.format("debug_stones macro %q index=%d", name, GetMacroIndexByName(name)))
     end
+    local glowing = stones.glowing or {}
+    WTF.Report(string.format("debug_stones glow setting=%s soulstone=%s healthstone=%s soulCooling=%s look=%s %d %s",
+        tostring(WTF.db.stones.glow), tostring(glowing.soulstone), tostring(glowing.healthstone),
+        tostring(stones.soulCooling), WTF.db.stones.layout, WTF.db.stones.spacing, tostring(WTF.db.stones.background)))
 end

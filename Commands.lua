@@ -20,9 +20,6 @@ local COMMANDS = {
     debug_shards = {handler = "ReportShardDebug", always = true},
     reset = {handler = "ResetPositions"},
     reset_focus = {handler = "ResetFocusWorks"},
-    -- Frames move in Edit Mode since 0.3.0; these two say so.
-    unlock = {handler = "ShowEditModeHelp", always = true},
-    lock = {handler = "ShowEditModeHelp", always = true},
     debug_editmode = {handler = "ReportEditModeDebug", always = true},
     stones = {handler = "ReportStoneStatus"},
     debug_stones = {handler = "ReportStoneDebug"},

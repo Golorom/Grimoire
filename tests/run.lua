@@ -35,7 +35,7 @@ local TOOLKIT_FILES = {"Engine/Shim.lua", "Engine/Auras.lua", "Engine/Units.lua"
     "Engine/Spells.lua", "Engine/Macros.lua", "Engine/Announce.lua", "Engine/ClassData.lua", "Engine/Owners.lua",
     "Engine/Control.lua", "Engine/DotTracker.lua", "Engine/PlateDots.lua", "Engine/DotPredict.lua"}
 local TOOLKIT_DIR = ""
-local RUNTIME_FILES = {"Commands.lua", "Core.lua", "EditMode.lua", "Shards.lua", "Stones.lua", "Tracker.lua",
+local RUNTIME_FILES = {"Commands.lua", "Core.lua", "EditMode.lua", "Glow.lua", "Shards.lua", "Stones.lua", "Tracker.lua",
     "Dots.lua", "Predict.lua", "Recast.lua", "Control.lua", "Alerts.lua", "Reminders.lua", "Threat.lua", "Pet.lua", "Procs.lua",
     "Cooldowns.lua", "KeyLabels.lua", "Shield.lua", "Probe.lua", "Options.lua"}
 local SHARD = 6265
@@ -1005,6 +1005,7 @@ local function fixture(options)
         function object:SetAtlas(atlas) self.atlas, self.texture = atlas, nil end
         function object:GetAtlas() return self.atlas end
         function object:SetVertexColor(...) self.vertex = {...} end
+        function object:SetBlendMode(mode) self.blend = mode end
         function object:SetHorizTile(value) self.horizTile = value end
         function object:SetVertTile(value) self.vertTile = value end
         function object:GetStatusBarColor() if self.barColor then return unpack(self.barColor) end end
@@ -1201,13 +1202,27 @@ local function fixture(options)
         env.C_EditMode = env.C_EditMode or {}
         state.wtf.LibEditMode = {
             frameSelections = {},
+            -- Numbers as the client's Enum.EditModeSettingDisplayType has them.
+            SettingType = {Dropdown = 0, Checkbox = 1, Slider = 2, Divider = 3, Expander = 4, ColorPicker = 10},
             AddFrame = function(lib, frame, callback, default, name)
-                lib.frameSelections[frame] = {
-                    SetFrameStrata = function(self, value) self.strata = value end,
-                    SetFrameLevel = function(self, value) self.level = value end,
-                }
-                state.editModeFrames[#state.editModeFrames + 1] = {frame = frame, callback = callback,
-                    default = default, name = name}
+                local entry = {frame = frame, callback = callback, default = default, name = name}
+                -- The highlight that takes the mouse in Edit Mode; its drop
+                -- handler reads the frame's place and calls back, as LibEditMode's.
+                local selection = {scripts = {}}
+                function selection:SetFrameStrata(value) self.strata = value end
+                function selection:SetFrameLevel(value) self.level = value end
+                function selection:GetScript(script) return self.scripts[script] end
+                function selection:SetScript(script, handler) self.scripts[script] = handler end
+                selection.scripts.OnDragStop = function()
+                    frame:StopMovingOrSizing()
+                    local point = frame.points[#frame.points]
+                    callback(frame, "Modern", point[1], point[4], point[5])
+                end
+                lib.frameSelections[frame] = selection
+                state.editModeFrames[#state.editModeFrames + 1] = entry
+            end,
+            AddFrameSettings = function(_, frame, settings)
+                state.editModeEntry(frame).settings = settings
             end,
             RegisterCallback = function(_, event, callback)
                 local list = editModeCallbacks[event]
@@ -1222,6 +1237,22 @@ local function fixture(options)
     function state.editModeEntry(frame)
         for _, entry in ipairs(state.editModeFrames) do
             if entry.frame == frame then return entry end
+        end
+    end
+    -- A frame dragged in Edit Mode and dropped with its center at x, y on
+    -- the screen: the drop runs the highlight's handler (Grimoire's snap, then
+    -- LibEditMode's save).
+    function state.dropInEditMode(frame, x, y)
+        local scale = frame:GetEffectiveScale()
+        frame:ClearAllPoints()
+        frame:SetPoint("CENTER", env.UIParent, "BOTTOMLEFT", x / scale, y / scale)
+        local selection = state.wtf.LibEditMode.frameSelections[frame]
+        selection.scripts.OnDragStop(selection)
+    end
+    -- One of a frame's Edit Mode settings, by its name.
+    function state.editModeSetting(frame, name)
+        for _, setting in ipairs(state.editModeEntry(frame).settings or {}) do
+            if setting.name == name then return setting end
         end
     end
     -- A frame moved in Edit Mode, as LibEditMode does it: anchored to its
@@ -3360,18 +3391,83 @@ test("one lock for every frame, closed at login; Edit Mode opens it and shows th
     equal(db.tracker.placeholders, false)
 end)
 
-test("/grim unlock and /grim lock say that frames move in Edit Mode", function()
+test("/grim unlock and /grim lock are gone; debug_editmode lists the frames", function()
     local state = fixture()
     state.clear()
     state.slash("unlock")
-    equal(state.last(), "Grimoire: Move Grimoire's frames in the game's Edit Mode: press Esc, then Edit Mode.")
+    contains(state.last(), "Use /grim", "an unknown word lists the commands")
+    contains(state.last(), "Frames move in the game's Edit Mode.")
     equal(state.wtf.db.locked, true, "nothing unlocks")
-    state.slash("lock")
-    contains(state.last(), "Edit Mode")
     state.clear()
     state.slash("debug_editmode")
-    contains(state.messages[1], "debug_editmode edit mode available=true editing=false frames=10")
+    contains(state.messages[1], "debug_editmode edit mode available=true editing=false frames=10 snap=true")
     contains(table.concat(state.messages, "\n"), "Grimoire Stones bar: CENTER CENTER 260.0 -140.0")
+end)
+
+-- The Stones bar is 90 x 48 at 100%, the shard counter 40 x 40, on a 1000 x
+-- 800 screen. The drops below keep clear of the other frames' default places.
+test("Edit Mode snap: a dropped frame lines up with the screen's center and edges", function()
+    local state = stonesFixture()
+    local bar = state.env.GrimoireStones
+    state.dropInEditMode(bar, 504, 150)
+    local x, y = state.absCenter(bar)
+    equal(math.floor(x + 0.5), 500, "its center onto the screen's center line")
+    equal(math.floor(y + 0.5), 150, "nothing to snap to across")
+    equal(state.wtf.db.stones.position.point, "BOTTOMLEFT", "saved where it snapped")
+    equal(math.floor(state.wtf.db.stones.position.x + 0.5), 455)
+    state.dropInEditMode(bar, 52, 30)
+    x, y = state.absCenter(bar)
+    equal(math.floor(x + 0.5), 45, "its left edge onto the screen's")
+    equal(math.floor(y + 0.5), 24, "its bottom edge onto the screen's")
+    state.dropInEditMode(bar, 720, 720)
+    x, y = state.absCenter(bar)
+    equal(math.floor(x + 0.5), 720, "far from every line: left where dropped")
+    equal(math.floor(y + 0.5), 720)
+end)
+
+test("Edit Mode snap: a frame snaps beside another and lines up with it", function()
+    local state = stonesFixture()
+    local bar, counter = state.env.GrimoireStones, state.wtf.shardCounter
+    -- The counter then spans 830 to 870 across and 130 to 170 up.
+    state.dropInEditMode(counter, 850, 150)
+    state.dropInEditMode(bar, 921, 143)
+    local x, y = state.absCenter(bar)
+    equal(math.floor(x + 0.5), 915, "its left edge onto the counter's right edge")
+    equal(math.floor(y + 0.5), 146, "its top onto the counter's top")
+    state.dropInEditMode(bar, 921, 500)
+    x = state.absCenter(bar)
+    equal(math.floor(x + 0.5), 921, "far below the counter: not lined up with it")
+end)
+
+test("Edit Mode snap: grid lines while the grid shows; nothing with Snap to Elements off", function()
+    local state = stonesFixture()
+    local bar = state.env.GrimoireStones
+    local grid = {gridSpacing = 32, shown = true}
+    function grid:IsShown() return self.shown end
+    function grid:GetCenter() return 500, 400 end
+    function grid:GetWidth() return 1000 end
+    function grid:GetHeight() return 800 end
+    function grid:GetEffectiveScale() return 1 end
+    local manager = {Grid = grid, snap = true}
+    function manager:IsSnapEnabled() return self.snap end
+    state.env.EditModeManagerFrame = manager
+    -- Grid lines every 32 from the center: the bar's center (599) is 3 from
+    -- 596, its top (494) 2 from 496; those win.
+    state.dropInEditMode(bar, 599, 470)
+    local x, y = state.absCenter(bar)
+    equal(math.floor(x + 0.5), 596, "onto a grid line")
+    equal(math.floor(y + 0.5), 472, "its top onto a grid line")
+    grid.shown = false
+    state.dropInEditMode(bar, 599, 470)
+    x = state.absCenter(bar)
+    equal(math.floor(x + 0.5), 599, "no grid shown: no grid snapping")
+    manager.snap = false
+    state.dropInEditMode(bar, 504, 150)
+    x = state.absCenter(bar)
+    equal(math.floor(x + 0.5), 504, "Snap to Elements off: left where dropped")
+    state.clear()
+    state.slash("debug_editmode")
+    contains(state.messages[1], "snap=false")
 end)
 
 test("a client without Edit Mode: frames stay where they were saved and nothing breaks", function()
@@ -3379,9 +3475,6 @@ test("a client without Edit Mode: frames stay where they were saved and nothing 
         db = {stones = {position = {point = "TOP", relativePoint = "TOP", x = 5, y = -40}}}})
     equal(#state.editModeFrames, 0)
     equal(state.env.GrimoireStones.points[1][1], "TOP", "the saved place")
-    state.clear()
-    state.slash("unlock")
-    equal(state.last(), "Grimoire: This client has no Edit Mode, so Grimoire's frames stay where they are.")
     state.clear()
     state.slash("debug_editmode")
     contains(state.messages[1], "available=false")
@@ -3398,6 +3491,79 @@ test("a frame's size change keeps its center and saves the place", function()
     equal(math.floor(afterX + 0.5), math.floor(beforeX + 0.5), "same center")
     equal(math.floor(afterY + 0.5), math.floor(beforeY + 0.5))
     equal(state.wtf.db.stones.position.relativePoint, "BOTTOMLEFT", "saved")
+end)
+
+test("Stones bar: layout, size, spacing and background from its Edit Mode dialog", function()
+    local state = stonesFixture()
+    local bar, soul, health = state.env.GrimoireStones, state.env[SOUL], state.env[HEALTH]
+    equal(bar.width, 90, "a row by default: 6 + 36 + 6 + 36 + 6")
+    equal(bar.height, 48)
+    equal(soul.points[#soul.points][1], "LEFT")
+    equal(bar.backdrop ~= nil, true, "the brown panel")
+    local names = {}
+    for _, setting in ipairs(state.editModeEntry(bar).settings) do names[#names + 1] = setting.name end
+    equal(table.concat(names, ", "), "Layout, Size, Button spacing, Background")
+    local layout = state.editModeSetting(bar, "Layout")
+    equal(layout.kind, 0, "a dropdown")
+    equal(layout.values[2].value, "vertical")
+    layout.set("Modern", "vertical")
+    equal(bar.width, 48, "a column")
+    equal(bar.height, 90)
+    equal(soul.points[#soul.points][1], "TOP")
+    equal(health.points[#health.points][5], -48, "the second button under the first")
+    state.editModeSetting(bar, "Button spacing").set("Modern", 0)
+    equal(bar.height, 84)
+    equal(health.points[#health.points][5], -42)
+    state.editModeSetting(bar, "Background").set("Modern", false)
+    equal(bar.backdrop, nil, "no panel")
+    equal(state.editModeSetting(bar, "Background").get("Modern"), false)
+    state.editModeSetting(bar, "Size").set("Modern", 120)
+    equal(state.wtf.db.stones.scale, 120, "the same setting as the settings page's")
+    -- In combat the secure buttons wait.
+    state.combat = true
+    layout.set("Modern", "horizontal")
+    equal(bar.width, 48, "waits for combat to end")
+    state.combat = false
+    state.emit("PLAYER_REGEN_ENABLED")
+    equal(bar.width, 6 + 36 + 0 + 36 + 6)
+    local repaired = stonesFixture({db = {stones = {layout = "diagonal", spacing = 99, background = false}}})
+    equal(repaired.wtf.db.stones.layout, "horizontal")
+    equal(repaired.wtf.db.stones.spacing, 20)
+    equal(repaired.env.GrimoireStones.backdrop, nil, "a saved choice holds after a reload")
+end)
+
+test("stone buttons glow when none is carried and one can be made now", function()
+    local state = stonesFixture({carried = {}})
+    local soul, health = state.env[SOUL], state.env[HEALTH]
+    equal(soul.glow.shown, false, "no Soul Shard: nothing can be made")
+    equal(health.glow.shown, false)
+    state.fill(1)
+    equal(soul.glow.shown, true, "a shard and no Soulstone")
+    equal(soul.glow.pulse.playing, true, "pulsing")
+    equal(health.glow.shown, true)
+    -- A Soulstone of yours is up: no new one can be used for now.
+    state.wtf.db.stones.soulstone = {name = "you", ends = os.time() + 600}
+    state.emit("BAG_UPDATE_DELAYED")
+    equal(soul.glow.shown, false, "yours is up")
+    equal(health.glow.shown, true)
+    state.wtf.db.stones.soulstone = nil
+    -- The Soulstone cooling down, where the client tells.
+    state.env.C_Container.GetItemCooldown = function() return state.now - 10, 1800, 1 end
+    state.emit("BAG_UPDATE_DELAYED")
+    equal(soul.glow.shown, false, "cooling down")
+    state.env.C_Container.GetItemCooldown = function() return 0, 0, 1 end
+    state.emit("BAG_UPDATE_DELAYED")
+    equal(soul.glow.shown, true)
+    state.settings.GRIMOIRE_STONES_GLOW:SetValue(false)
+    equal(soul.glow.shown, false, "its switch")
+    equal(health.glow.shown, false)
+    local carrying = stonesFixture()
+    carrying.fill(1)
+    equal(carrying.env[SOUL].glow.shown, false, "a stone in the bags: nothing to make")
+    equal(carrying.env[HEALTH].glow.shown, false)
+    carrying.clear()
+    carrying.slash("debug_stones")
+    contains(table.concat(carrying.messages, "\n"), "debug_stones glow setting=true soulstone=false healthstone=false")
 end)
 
 test("/grim reset moves the Stones bar back, after combat if needed", function()
@@ -7198,6 +7364,28 @@ test("reminders: a missing Demon Skin shows its icon and a line; a click casts i
     equal(lines[#lines].text, "Demon Skin ends in 1 min.")
 end)
 
+test("reminders: the icons glow while they show for real, not as Edit Mode's samples", function()
+    local state = reminderFixture()
+    local armor = state.env.GrimoireReminderArmor
+    equal(armor.shown, true)
+    equal(armor.glow.shown, true, "Demon Skin missing: a glow")
+    state.editMode(true)
+    settle(state)
+    equal(armor.glow.shown, false, "a sample in Edit Mode: no glow")
+    state.editMode(false)
+    settle(state)
+    equal(armor.glow.shown, true)
+    state.settings.GRIMOIRE_REMIND_GLOW:SetValue(false)
+    settle(state)
+    equal(armor.glow.shown, false, "its switch")
+    state.settings.GRIMOIRE_REMIND_GLOW:SetValue(true)
+    state.buffs = {["Demon Skin"] = {name = "Demon Skin", spellId = 687, expirationTime = state.now + 600}}
+    state.emit("UNIT_AURA", "player")
+    settle(state)
+    equal(armor.shown, false)
+    equal(armor.glow.shown, false, "the armor is on")
+end)
+
 test("reminders: no lines in the first seconds after login, while the demon and buffs load", function()
     local state = fixture({spellbook = {{spellID = 687, name = "Demon Skin"}, {spellID = 688, name = "Summon Imp"}}})
     state.now = state.now + 1
@@ -8043,7 +8231,7 @@ end)
 -- own click) is the one allowed path, in Stones.lua only.
 test("source scan: no chat, emote, or addon-message call anywhere; trade calls only in Stones.lua", function()
     local files = {"Alerts.lua", "Commands.lua", "Control.lua", "Cooldowns.lua", "Core.lua", "Dots.lua", "KeyLabels.lua",
-        "EditMode.lua", "Options.lua", "Pet.lua", "Predict.lua", "Probe.lua", "Procs.lua", "Reminders.lua", "Shards.lua",
+        "EditMode.lua", "Glow.lua", "Options.lua", "Pet.lua", "Predict.lua", "Probe.lua", "Procs.lua", "Reminders.lua", "Shards.lua",
         "Shield.lua", "Stones.lua", "Threat.lua", "Tracker.lua", "Engine/Announce.lua", "Engine/Auras.lua",
         "Engine/ClassData.lua", "Engine/Control.lua", "Engine/DotPredict.lua", "Engine/DotTracker.lua",
         "Engine/HealthBars.lua", "Engine/Macros.lua", "Engine/Owners.lua", "Engine/PlateDots.lua", "Engine/Shim.lua",

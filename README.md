@@ -13,20 +13,20 @@ One action reaches another player, and only on your click: a left-click on the H
 ## What it does
 
 - **Soul Shards.** Deletes shards that Drain Soul or Shadowburn create above your limit (your soul bag's size, or a number you set). Shards you had, bought or moved in are never deleted. A counter shows how many you carry.
-- **Stones.** A bar with Soulstone and Healthstone buttons: left-click uses, right-click creates. Reminders when none is up.
+- **Stones.** A bar with Soulstone and Healthstone buttons: left-click uses, right-click creates. A button glows when you carry none of that stone and can make one. Row or column, size, spacing and background are set in Edit Mode. Reminders when none is up.
 - **DoT tracker.** A row per mob you have DoTs on, with the time left on your Curse, Bane, Corruption, Immolate, Siphon Life and Fear. Optional dots under nameplates.
 - **Recast cue.** A DoT's slot on the tracker pulses when it is time to start casting it again: when its time left is the spell's cast time plus a lead time you set, so the new one lands as the old one ends.
 - **Predict.** Shows the damage your DoTs will still do on the target's health bar, and DIES when they will finish the mob. While you channel Wrack it counts the faster ticks (built ahead of the talent; not yet checked in game).
 - **Control bar.** Timers for the mobs you Fear or Banish, with `! Fear`, `! Banish`, `! Seduction` and `! Curse` macros kept up to date in your macro list.
 - **Alert window.** Short lines in a window of their own: centered text, no backdrop by default.
-- **Reminders.** Click-to-cast icons for a missing Demon Armor or Demon Skin and a missing demon. Their lines back off (at once, then 2, 5, then every 15 minutes) and stay quiet while you are dead, on a flight path or resting.
+- **Reminders.** Glowing click-to-cast icons for a missing Demon Armor or Demon Skin and a missing demon. Their lines back off (at once, then 2, 5, then every 15 minutes) and stay quiet while you are dead, on a flight path or resting.
 - **Threat warning.** A line when a mob your Voidwalker or a tank held turns to you: red with a sound in a group, yellow and silent alone.
 - **Demon warnings.** Your demon died; Enslave Demon broke; your demon's taunt is on autocast in a group.
 - **Nightfall.** A sound and an icon when Shadow Trance procs.
 - **Cooldown alerts.** A line just before a chosen spell is ready, timed from your own cast.
 - **Shield display.** A crescent beside your character for Sacrifice and other absorbs, on either side.
 - **Pet bar key labels.** Keeps the pet bar's key labels at the size and place of your other bars' labels.
-- **Edit Mode.** Every Grimoire frame moves in the game's own Edit Mode, under its own name.
+- **Edit Mode.** Every Grimoire frame moves in the game's own Edit Mode, under its own name, and snaps like the game's frames.
 - **Diagnostics.** While you play, counts whether the game lets addon code read the values Grimoire's features need. Counts only, kept on your computer.
 
 ## How it differs from Warlock Tools Forever

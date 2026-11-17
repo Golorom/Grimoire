@@ -224,7 +224,8 @@ end
 local function AddStonesPage(parent)
     local page = Settings.RegisterVerticalLayoutSubcategory(parent, STONES_TITLE)
     local shownInitializer = Flag(page, "GRIMOIRE_STONES_SHOWN", "Show the Stones bar", "stones", "shown", true,
-        "The bar with the Soulstone and Healthstone buttons. Changes in combat apply when combat ends.",
+        "The bar with the Soulstone and Healthstone buttons. Changes in combat apply when combat ends. "
+            .. "Its layout, size, button spacing and background are set in Edit Mode: select the bar there.",
         RefreshStones)
     local scale = Proxy(page, "GRIMOIRE_STONES_SCALE", Settings.VarType.Number, "Stones bar size",
         WTF.DEFAULT_FRAME_SCALE,
@@ -234,6 +235,10 @@ local function AddStonesPage(parent)
         SliderOptions(WTF.FRAME_SCALE_MIN, WTF.FRAME_SCALE_MAX, WTF.FRAME_SCALE_STEP, true),
         "How big the Stones bar is, in percent. It keeps its center. A change in combat applies when combat ends.")
     scaleInitializer:SetParentInitializer(shownInitializer, function() return WTF.db.stones.shown end)
+    Flag(page, "GRIMOIRE_STONES_GLOW", "Glow when a stone can be made", "stones", "glow", true,
+        "A stone button glows when you carry none of that stone and can make one now: you know the spell and "
+            .. "have a Soul Shard, and for a Soulstone none of yours is up and it is not cooling down.",
+        function() WTF.RefreshStoneGlow() end)
     Flag(page, "GRIMOIRE_STONES_MACROS", "Keep stone macros", "stones", "macros", true,
         "Keep \"! Healthstone\" and \"! Soulstone\" in your character macros for your action bars: "
             .. "left-click uses your best stone, right-click creates one. Turning this off deletes them.",
@@ -1004,6 +1009,9 @@ local function AddAlertsPage(parent)
     Flag(page, "GRIMOIRE_REMIND_DEMON", "Demon reminder", "reminders", "demon", true,
         "An icon while you have no demon out (hidden while mounted), and a line after combat. Click it to summon "
             .. "your last demon. The line repeats and stays quiet like the armor's.",
+        function() WTF.RefreshReminders() end)
+    Flag(page, "GRIMOIRE_REMIND_GLOW", "Reminder icons glow", "reminders", "glow", true,
+        "The armor and demon icons glow while they show, so they catch the eye.",
         function() WTF.RefreshReminders() end)
     Heading(layout, "In combat")
     Flag(page, "GRIMOIRE_THREAT_ENABLED", "Threat warning", "threat", "enabled", true,

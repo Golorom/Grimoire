@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.3.1 (2026-11-17)
+
+New files: restart the game client.
+
+Added
+- Edit Mode snapping. A dropped Grimoire frame snaps as the game's frames do while "Snap to Elements" is on: to the grid's lines while the grid shows, to the screen's edges and center, and beside other frames, lined up with their edges or centers.
+- Stones bar settings in its Edit Mode dialog: layout (row or column), size, button spacing, background.
+- A stone button glows when you carry none of that stone and can make one now: the spell known, a Soul Shard in your bags, and for a Soulstone none of yours up and none cooling down. Setting on the Stones page.
+- The armor and demon reminder icons glow while they show. Setting on the Alerts page.
+
+Removed
+- `/grim unlock` and `/grim lock`.
+
 ## 0.3.0 (2026-11-17)
 
 New files: restart the game client, a /reload is not enough.

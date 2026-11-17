@@ -21,7 +21,8 @@ The code's namespace table is called `WTF` (the second value of `...` in each fi
 | `Core.lua` | settings repair (`SanitizeDB`), guarded login starts, shared helpers (`IsSecret`, `MoveRestricted`, `QuietTime`, `Report`) |
 | `Commands.lua` | `/grim` command table |
 | `Libs\LibEditMode\` | LibEditMode (p3lim), unmodified, loaded into Grimoire's namespace by its `namespaced.lua`, so no other addon's copy is involved; Forever and retail only |
-| `EditMode.lua` | registers every frame with Edit Mode (name, default place), shows the samples while Edit Mode is open, saves places, scales a frame around its center |
+| `EditMode.lua` | registers every frame with Edit Mode (name, default place, dialog settings), shows the samples while Edit Mode is open, snaps a dropped frame (grid, screen, other frames) before LibEditMode saves it, scales a frame around its center |
+| `Glow.lua` | the pulsing gold glow on buttons that want a click (stones, reminder icons), from the `Textures\Glow*.tga` pieces |
 | `Shards.lua` | Soul Shard deletion and the counter |
 | `Stones.lua` | Stones bar, stone macros, stone reminders, Healthstone trade |
 | `Tracker.lua`, `Dots.lua`, `Predict.lua`, `Control.lua` | glue between Grimoire's settings and the four engines |
