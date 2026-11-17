@@ -304,10 +304,15 @@ function WTF.LayoutButtonBar(bar, list, settings, size, padding)
             button:SetPoint("LEFT", bar, "LEFT", offset, 0)
         end
     end
+    WTF.SetBarBackground(bar, settings.background)
+end
+
+-- The brown panel with a gold border, or none.
+function WTF.SetBarBackground(bar, on)
     if type(bar.SetBackdrop) ~= "function" then
         return
     end
-    if settings.background then
+    if on then
         bar:SetBackdrop(BAR_BACKDROP)
         bar:SetBackdropColor(BAR_BROWN[1], BAR_BROWN[2], BAR_BROWN[3], BAR_BROWN[4])
         bar:SetBackdropBorderColor(BAR_GOLD[1], BAR_GOLD[2], BAR_GOLD[3])
@@ -331,7 +336,7 @@ function WTF.AddButtonBarSettings(bar, options)
         for _, choice in ipairs(WTF.STONES_LAYOUTS) do
             layouts[#layouts + 1] = {text = choice.label, value = choice.key}
         end
-        return {
+        local list = {
             {kind = kinds.Dropdown, name = "Layout", default = "horizontal", values = layouts, get = Get("layout"),
                 set = Look("layout"), desc = "A row or a column."},
             WTF.EditModeSizeSetting(kinds, Get("scale"), options.setScale),
@@ -341,6 +346,10 @@ function WTF.AddButtonBarSettings(bar, options)
             {kind = kinds.Checkbox, name = "Background", default = options.background, get = Get("background"),
                 set = Look("background"), desc = "The brown panel with the gold border behind " .. options.what .. "."},
         }
+        for _, setting in ipairs(options.extra and options.extra(kinds) or {}) do
+            list[#list + 1] = setting
+        end
+        return list
     end)
 end
 

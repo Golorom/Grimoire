@@ -83,6 +83,8 @@ local function FamilyOf(spellID)
     return predictor and name and predictor.byName and predictor.byName[name] or nil
 end
 
+WTF.RecastFamilyOf = FamilyOf
+
 -- Seconds until the cue for this DoT, and its time left: at or below 0 the
 -- cue is due.
 local function Due(dot, now)
@@ -152,15 +154,39 @@ local function HideAll()
     recast.shown = {}
 end
 
+-- 0.3.6: the DoTs due on your target and on your focus, for the glows on
+-- your action bars (Hotbar.lua): "dot:<family>" and "focus:<family>".
+local function HotbarWants(predictor, now)
+    local keys = {}
+    if not WTF.SetHotbarGroup then
+        return
+    end
+    if WTF.db.recast.enabled and predictor and type(predictor.Key) == "function" and next(predictor.mobs) then
+        local casting = recast.casting
+        for _, unit in ipairs({"target", "focus"}) do
+            local key = UnitExists(unit) and predictor.Key(unit)
+            local mob = key and predictor.mobs[key]
+            for family, dot in pairs(mob and mob.dots or {}) do
+                local mine = casting and casting.family == family and casting.key == key
+                if not mine and not dot.doubtful and Due(dot, now) <= 0 then
+                    keys[(unit == "target" and "dot:" or "focus:") .. family] = true
+                end
+            end
+        end
+    end
+    WTF.SetHotbarGroup("recast", keys)
+end
+
 -- Which slots are due now, and their marks shown or hidden.
 local function Update()
     local predictor = WTF.predictor
     local tracker = WTF.DotTracker and WTF.DotTracker()
+    local now = GetTime()
+    HotbarWants(predictor, now)
     if not WTF.db.recast.enabled or not predictor or not tracker or type(predictor.Key) ~= "function" then
         HideAll()
         return
     end
-    local now = GetTime()
     local wanted, shown = {}, {}
     if next(predictor.mobs) then
         local casting = recast.casting
@@ -230,6 +256,9 @@ local function OnUpdate(self, elapsed)
     -- Nothing timed and nothing marked: the clock stops until your next cast.
     local predictor = WTF.predictor
     if (not predictor or not next(predictor.mobs)) and #recast.shown == 0 then
+        if WTF.SetHotbarGroup then
+            WTF.SetHotbarGroup("recast", {})
+        end
         self:SetScript("OnUpdate", nil)
         return
     end

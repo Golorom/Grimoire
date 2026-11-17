@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.3.6 (2026-11-17)
+
+New file: restart the game client.
+
+Added
+- Glows on your action bars, each with its own switch: a stone you can make, a missing Demon Armor or Demon Skin, your demon's summon while none is out, a DoT due again on your target, and Shadow Bolt during Nightfall. With them, Grimoire's own buttons can be hidden.
+- Focus DoT macros, off by default: "! Corruption F", "! Immolate F", "! Agony F" and "! Siphon F" cast on your focus. Their buttons glow when your focus needs that DoT again. DoTs page.
+- Show the reminder icons: off keeps the lines and the glows. Alerts page.
+- Prep strip: Empty slots in its Edit Mode dialog, Show, Faded (a dim icon, default) or Close up. The Nightfall icon joins the strip. The demon icon is last.
+- /grim debug_hotbar.
+
 ## 0.3.5 (2026-11-17)
 
 New file: restart the game client.

@@ -443,7 +443,7 @@ local function CreateCounter()
     counter:SetScript("OnLeave", function() GameTooltip:Hide() end)
     -- 0.3.5: in the prep strip (Strip.lua), after the Stones buttons.
     if WTF.StripActive() then
-        WTF.JoinStrip(counter, 3, function() return WTF.db.shards.counter end, false)
+        WTF.JoinStrip(counter, 3, function() return WTF.db.shards.counter end, {native = COUNTER_SIZE})
         return
     end
     -- Moves in Edit Mode (EditMode.lua).

@@ -55,6 +55,11 @@ local function Flag(page, variable, name, group, key, default, tooltip, onChange
     return Settings.CreateCheckbox(page, setting, tooltip)
 end
 
+-- 0.3.6: the glows on your action bars (Hotbar.lua).
+local function RefreshHotbar()
+    WTF.RefreshHotbar()
+end
+
 local function RefreshShardCounter()
     if WTF.RefreshShardCounter then
         WTF.RefreshShardCounter()
@@ -211,6 +216,9 @@ local function AddStonesSection(page, layout)
         "A stone button glows when you carry none of that stone and can make one now: you know the spell and "
             .. "have a Soul Shard, and for a Soulstone none of yours is up and it is not cooling down.",
         function() WTF.RefreshStoneGlow() end)
+    Flag(page, "GRIMOIRE_HOTBAR_STONES", "Glow stones on your action bars", "hotbar", "stones", true,
+        "The same glow on your action bar buttons for that stone: the \"! Healthstone\" and \"! Soulstone\" "
+            .. "macros, the Create spells, or the stones. With it, the Stones bar can be hidden.", RefreshHotbar)
     Flag(page, "GRIMOIRE_STONES_MACROS", "Keep stone macros", "stones", "macros", true,
         "Keep \"! Healthstone\" and \"! Soulstone\" in your character macros for your action bars: "
             .. "left-click uses your best stone, right-click creates one. Turning this off deletes them.",
@@ -225,11 +233,12 @@ end
 
 -- 0.3.5: the prep strip (Strip.lua), a choice; on or off after a reload.
 local function AddStripSection(page, layout)
-    Heading(layout, "Prep strip", "The Stones buttons, the shard counter, and the reminder icons in one strip.")
+    Heading(layout, "Prep strip", "The Stones buttons, the shard counter, the reminder icons and the Nightfall "
+        .. "icon in one strip.")
     Flag(page, "GRIMOIRE_STRIP_ENABLED", "Join them in one strip", "strip", "enabled", false,
-        "The Stones buttons, the shard counter, and the reminder icons (Demon Armor, demon) in one bar that moves "
-            .. "and is styled as one in Edit Mode: layout, size, button spacing, background. Each keeps its slot "
-            .. "while its switch is on. Off, each is its own frame. Takes effect after a reload.")
+        "The Stones buttons, the shard counter, the reminder icons (Demon Armor, demon) and the Nightfall icon in "
+            .. "one bar that moves and is styled as one in Edit Mode: layout, size, button spacing, background, and "
+            .. "what an empty slot shows. Off, each is its own frame. Takes effect after a reload.")
     if type(CreateSettingsButtonInitializer) == "function" and type(layout) == "table"
             and type(layout.AddInitializer) == "function" then
         layout:AddInitializer(CreateSettingsButtonInitializer("Apply the strip choice", "Reload now", function()
@@ -497,7 +506,12 @@ local function AddRecastSection(page, layout)
     end, "Yellow edges: a pulsing yellow frame on the DoT's icon. Gold glow: the soft gold glow of the Stones "
         .. "buttons around it.")
     style:SetParentInitializer(enabled, function() return WTF.db.recast.enabled end)
-    for _, initializer in ipairs({enabled, lead, style}) do
+    -- 0.3.6: the same cue on your action bars.
+    local hotbar = Flag(page, "GRIMOIRE_HOTBAR_RECAST", "Glow the DoT on your action bars", "hotbar", "recast", true,
+        "The DoT's button on your action bars glows too when it is time to recast it on your target: the spell, or "
+            .. "a macro that casts it. With focus DoT macros, their buttons glow for your focus.", RefreshHotbar)
+    hotbar:SetParentInitializer(enabled, function() return WTF.db.recast.enabled end)
+    for _, initializer in ipairs({enabled, lead, style, hotbar}) do
         if type(initializer.AddModifyPredicate) == "function" then
             initializer:AddModifyPredicate(function() return WTF.PredictAvailable() end)
         end
@@ -549,6 +563,11 @@ local function AddTrackerPage(parent)
     AddCurseSection(page, layout)
     AddPredictSection(page, layout)
     AddRecastSection(page, layout)
+    Heading(layout, "Focus DoT macros", "Macros that cast a DoT on your focus.")
+    Flag(page, "GRIMOIRE_FOCUS_MACROS", "Keep focus DoT macros", "hotbar", "focusMacros", false,
+        "Keep \"! Corruption F\", \"! Immolate F\", \"! Agony F\" and \"! Siphon F\" in your character macros, "
+            .. "for the DoTs you know: each casts that DoT on your focus. Their buttons glow when your focus needs "
+            .. "that DoT again. Turning this off deletes them.", function() WTF.ApplyFocusMacros() end)
 end
 
 -- One color per slot, shared by the tracker's bars and the nameplate dots.
@@ -878,6 +897,11 @@ local function AddAlertsPage(parent)
             .. "runs out. Click the icon to cast it. The line repeats after 2, 5, then every 15 minutes, and "
             .. "stays quiet while you are dead, on a flight path, or resting in a city.",
         function() WTF.RefreshReminders() end)
+    Flag(page, "GRIMOIRE_REMIND_ICONS", "Show the reminder icons", "reminders", "icons", true,
+        "The click-to-cast icons for a missing armor or demon. Off, the lines and the glows on your action bars "
+            .. "stay.", function() WTF.RefreshReminders() end)
+    Flag(page, "GRIMOIRE_HOTBAR_ARMOR", "Glow Demon Armor on your action bars", "hotbar", "armor", true,
+        "Your Demon Armor or Demon Skin button on your action bars glows while it is missing.", RefreshHotbar)
     Flag(page, "GRIMOIRE_REMIND_GLOW", "Reminder icons glow", "reminders", "glow", true,
         "The armor and demon icons glow while they show, so they catch the eye. The demon reminder is on the "
             .. "Demon page.",
@@ -897,6 +921,9 @@ local function AddAlertsPage(parent)
     Flag(page, "GRIMOIRE_PROCS_ICON", "Nightfall icon", "procs", "icon", true,
         "A Shadow Trance icon with its time left while it is up. Move it in Edit Mode.",
         function() WTF.RefreshProcs() end)
+    Flag(page, "GRIMOIRE_HOTBAR_NIGHTFALL", "Glow Shadow Bolt during Nightfall", "hotbar", "nightfall", true,
+        "Your Shadow Bolt buttons on your action bars glow while Shadow Trance is up. The game draws it, as it "
+            .. "draws the Nightfall icon.", RefreshHotbar)
     Flag(page, "GRIMOIRE_COOLDOWNS_ENABLED", "Cooldown alerts", "cooldowns", "enabled", true,
         "A line just before a chosen spell is ready again, timed from your cast.")
     Flag(page, "GRIMOIRE_COOLDOWNS_SOUND", "Cooldown sound", "cooldowns", "sound", true,
@@ -924,6 +951,9 @@ local function AddDemonPage(parent)
         "In a group where you are not the tank: a yellow line when your demon's taunt (Torment, Suffering, "
             .. "Anguish) is on autocast, and once more as a fight starts. Checked out of combat.",
         function() WTF.RefreshPetTaunt() end)
+    Flag(page, "GRIMOIRE_HOTBAR_DEMON", "Glow your demon's summon on your action bars", "hotbar", "demon", true,
+        "Your last demon's summon button on your action bars glows while you have no demon out, checked out of "
+            .. "combat.", RefreshHotbar)
     Flag(page, "GRIMOIRE_PET_KEY_LABELS", "Pet bar key labels at normal size", "keyLabels", "petNormal", true,
         "Edit Mode's Icon Size makes the pet bar's key labels grow with its buttons. With this on they stay the "
             .. "size of your other bars' labels.", function() WTF.RefreshKeyLabels() end)

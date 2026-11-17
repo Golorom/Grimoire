@@ -48,6 +48,8 @@ local function BuffIDs()
     return ids
 end
 
+WTF.NightfallIDs = BuffIDs
+
 local function IDSet()
     local set = {}
     for _, id in ipairs(BuffIDs()) do
@@ -130,7 +132,7 @@ end
 
 function WTF.ResetProcsPosition()
     WTF.db.procs.position = nil
-    if holder then
+    if holder and not WTF.StripActive() then
         holder:ClearAllPoints()
         holder:SetPoint(DEFAULT_POINT[1], UIParent, DEFAULT_POINT[2], DEFAULT_POINT[3], DEFAULT_POINT[4])
     end
@@ -142,17 +144,23 @@ local function CreateIcon()
     holder:SetClampedToScreen(true)
     holder:SetMovable(true)
     holder:EnableMouse(false)
-    WTF.RegisterMovable(holder, function(position) WTF.db.procs.position = position end,
-        {name = "Grimoire Nightfall icon", default = WTF.EditModeDefault(DEFAULT_POINT)})
     holder.sample = holder:CreateTexture(nil, "BACKGROUND")
     holder.sample:SetAllPoints()
     holder.sample:SetTexture(C_Spell.GetSpellTexture and C_Spell.GetSpellTexture(BUFF_IDS[1]) or 136223)
     holder.sample:SetAlpha(0.4)
-    local position = WTF.db.procs.position
-    if position then
-        holder:SetPoint(position.point, UIParent, position.relativePoint, position.x, position.y)
+    if WTF.StripActive() then
+        -- 0.3.6: in the prep strip (Strip.lua). Whether the proc is up cannot
+        -- be read in combat, so its slot always stays.
+        WTF.JoinStrip(holder, 5, function() return WTF.db.procs.icon end, {native = ICON_SIZE, keepsSlot = true})
     else
-        holder:SetPoint(DEFAULT_POINT[1], UIParent, DEFAULT_POINT[2], DEFAULT_POINT[3], DEFAULT_POINT[4])
+        WTF.RegisterMovable(holder, function(position) WTF.db.procs.position = position end,
+            {name = "Grimoire Nightfall icon", default = WTF.EditModeDefault(DEFAULT_POINT)})
+        local position = WTF.db.procs.position
+        if position then
+            holder:SetPoint(position.point, UIParent, position.relativePoint, position.x, position.y)
+        else
+            holder:SetPoint(DEFAULT_POINT[1], UIParent, DEFAULT_POINT[2], DEFAULT_POINT[3], DEFAULT_POINT[4])
+        end
     end
     if not WTF.AuraEngineKind or not WTF.AuraEngineKind() then
         return

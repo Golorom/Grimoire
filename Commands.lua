@@ -4,7 +4,7 @@ local USAGE = "Use /grim, /grim test (sample alerts), /grim shards, /grim stones
     .. "/grim reset, /grim reset_focus, or for testing /grim debug_log, debug_log_save, debug_log_reset, debug_checks, "
     .. "debug_restrictions, debug_alerts, debug_reminders, "
     .. "debug_threat, debug_pet, debug_procs, debug_cooldowns, debug_shield, debug_shards, debug_stones, "
-    .. "debug_tracker, debug_predict, debug_recast, debug_control, debug_editmode. "
+    .. "debug_tracker, debug_predict, debug_recast, debug_control, debug_editmode, debug_hotbar. "
     .. "Frames move in the game's Edit Mode."
 local UNAVAILABLE = "Grimoire is unavailable. Check its login message."
 
@@ -21,6 +21,7 @@ local COMMANDS = {
     reset = {handler = "ResetPositions"},
     reset_focus = {handler = "ResetFocusWorks"},
     debug_editmode = {handler = "ReportEditModeDebug", always = true},
+    debug_hotbar = {handler = "ReportHotbarDebug"},
     stones = {handler = "ReportStoneStatus"},
     debug_stones = {handler = "ReportStoneDebug"},
     debug_tracker = {handler = "ReportTrackerDebug", always = true},

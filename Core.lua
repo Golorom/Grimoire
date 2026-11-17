@@ -139,6 +139,8 @@ local REQUIRED_NAMESPACE = {
     "SanitizeAlerts", "InitializeAlerts", "RefreshAlerts", "Alert", "TestAlerts", "ResetAlertsPosition",
     "SanitizeReminders", "InitializeReminders", "RefreshReminders", "ResetRemindersPosition",
     "SanitizeStrip", "InitializeStrip", "StripActive", "JoinStrip", "RefreshStrip", "ResetStripPosition",
+    "SanitizeHotbar", "InitializeHotbar", "RefreshHotbar", "SetHotbarGroup", "SetHotbarWant", "ReportHotbarDebug",
+    "ApplyFocusMacros", "StoneOfAction", "RecastFamilyOf", "NightfallIDs",
     "SanitizeThreat", "InitializeThreat", "SanitizePet", "InitializePet", "RefreshPetTaunt",
     "QuietTime", "ForgetAlerts",
     "SanitizeProcs", "InitializeProcs", "RefreshProcs", "ResetProcsPosition",
@@ -615,6 +617,7 @@ function WTF.SanitizeDB(db)
         db.alerts = WTF.SanitizeAlerts(db.alerts, SanitizePosition)
         db.reminders = WTF.SanitizeReminders(db.reminders, SanitizePosition)
         db.strip = WTF.SanitizeStrip(db.strip, SanitizePosition)
+        db.hotbar = WTF.SanitizeHotbar(db.hotbar)
         db.threat = WTF.SanitizeThreat(db.threat)
         db.pet = WTF.SanitizePet(db.pet)
         db.procs = WTF.SanitizeProcs(db.procs, SanitizePosition)
@@ -961,6 +964,8 @@ events:SetScript("OnEvent", function(self, event, loadedName)
         Start("Nameplate dots", WTF.InitializePlateDots)
         Start("Reminders", WTF.InitializeReminders)
         Start("Nightfall", WTF.InitializeProcs)
+        -- After the parts whose buttons it glows on your action bars.
+        Start("Action bar glows", WTF.InitializeHotbar)
     end
     Start("Threat warning", WTF.InitializeThreat)
     Start("Demon warnings", WTF.InitializePet)

@@ -775,18 +775,51 @@ UpdateGlow = function()
         return
     end
     local settings = WTF.db.stones
-    local on = settings.enabled and settings.shown and settings.glow
-    local shard = Shards() > 0
+    local shard = settings.enabled and Shards() > 0
     local soulRank, healthRank = BestKnownRank(SOULSTONES), BestKnownRank(HEALTHSTONES)
-    local soul = on and shard and soulRank ~= nil and CountCarried(SOULSTONES) == 0 and not SoulstoneUp()
+    local soul = shard and soulRank ~= nil and CountCarried(SOULSTONES) == 0 and not SoulstoneUp()
     if soul then
         stones.soulCooling = Cooling(soulRank.items[1])
         soul = not stones.soulCooling
     end
-    local health = on and shard and healthRank ~= nil and CountCarried(HEALTHSTONES) == 0
+    local health = shard and healthRank ~= nil and CountCarried(HEALTHSTONES) == 0
+    -- 0.3.6: the same need glows the stone on your action bars (Hotbar.lua).
+    if WTF.SetHotbarWant then
+        WTF.SetHotbarWant("soulstone", soul == true)
+        WTF.SetHotbarWant("healthstone", health == true)
+    end
+    local on = settings.shown and settings.glow
+    soul, health = on and soul, on and health
     stones.glowing = {soulstone = soul == true, healthstone = health == true}
     WTF.SetGlow(buttons.soulstone.glow, soul)
     WTF.SetGlow(buttons.healthstone.glow, health)
+end
+
+-- 0.3.6: which stone an action bar's spell, item or macro is, if any.
+function WTF.StoneOfAction(kind, value)
+    for stone, ranks in pairs({soulstone = SOULSTONES, healthstone = HEALTHSTONES}) do
+        if kind == "macro" then
+            if value == WTF.STONE_MACROS[stone] then
+                return stone
+            end
+            for _, old in ipairs(OLD_MACRO_NAMES[stone]) do
+                if value == old then
+                    return stone
+                end
+            end
+        else
+            for _, rank in ipairs(ranks) do
+                if kind == "spell" and rank.spell == value then
+                    return stone
+                end
+                for _, item in ipairs(kind == "item" and rank.items or {}) do
+                    if item == value then
+                        return stone
+                    end
+                end
+            end
+        end
+    end
 end
 WTF.RefreshStoneGlow = function() UpdateGlow() end
 

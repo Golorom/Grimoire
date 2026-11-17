@@ -35,7 +35,7 @@ local TOOLKIT_FILES = {"Engine/Shim.lua", "Engine/Auras.lua", "Engine/Units.lua"
     "Engine/Spells.lua", "Engine/Macros.lua", "Engine/Announce.lua", "Engine/ClassData.lua", "Engine/Owners.lua",
     "Engine/Control.lua", "Engine/DotTracker.lua", "Engine/PlateDots.lua", "Engine/DotPredict.lua"}
 local TOOLKIT_DIR = ""
-local RUNTIME_FILES = {"Commands.lua", "Core.lua", "EditMode.lua", "Glow.lua", "Strip.lua", "Shards.lua", "Stones.lua", "Tracker.lua",
+local RUNTIME_FILES = {"Commands.lua", "Core.lua", "EditMode.lua", "Glow.lua", "Strip.lua", "Hotbar.lua", "Shards.lua", "Stones.lua", "Tracker.lua",
     "Dots.lua", "Predict.lua", "Recast.lua", "Control.lua", "Alerts.lua", "Reminders.lua", "Threat.lua", "Pet.lua", "Procs.lua",
     "Cooldowns.lua", "KeyLabels.lua", "Shield.lua", "Probe.lua", "Options.lua"}
 local SHARD = 6265
@@ -941,6 +941,7 @@ local function fixture(options)
             if self.protected and newParent then newParent.protected = true end
         end
         function object:GetParent() return self.parent end
+        function object:SetAllPoints(target) self.allPoints = target or self.parent end
         function object:IsForbidden() return self.forbidden == true end
         function object:CreateMaskTexture() return widget("MaskTexture", nil, self) end
         function object:GetFrameLevel() return self.level or 1 end
@@ -1111,6 +1112,31 @@ local function fixture(options)
         end
         state.frames[#state.frames + 1] = frame
         return frame
+    end
+    -- Action bars (0.3.6): the first bar's twelve buttons, and what each slot
+    -- holds: options.actions[slot] = {kind, id, subType, macro name}.
+    state.actions = options.actions or {}
+    state.macroSpells = options.macroSpells or {}
+    for index = 1, options.actions and 12 or 0 do
+        local button = env.CreateFrame("CheckButton", "ActionButton" .. index, env.UIParent,
+            "SecureActionButtonTemplate")
+        button.action = index
+    end
+    env.GetActionInfo = function(slot)
+        local action = state.actions[slot]
+        if action then return action[1], action[2], action[3] end
+    end
+    env.GetActionText = function(slot)
+        local action = state.actions[slot]
+        return action and action[4]
+    end
+    env.HasAction = function(slot) return state.actions[slot] ~= nil end
+    env.GetMacroSpell = function(index) return state.macroSpells[index] end
+    -- Something on the bars changed: the map follows shortly, out of combat.
+    function state.barsChanged()
+        state.emit("ACTIONBAR_SLOT_CHANGED")
+        state.now = state.now + 1
+        state.runTimers()
     end
     function state.emit(event, ...)
         for _, frame in ipairs(state.frames) do
@@ -4960,7 +4986,7 @@ test("the DoTs page keeps what the tracker does; its look is in each part's Edit
     for _, heading in ipairs(page.headings) do
         if heading.heading then names[#names + 1] = heading.heading end
     end
-    equal(table.concat(names, ","), "Nameplate dots,Curse slot,DoT damage prediction,Recast cue")
+    equal(table.concat(names, ","), "Nameplate dots,Curse slot,DoT damage prediction,Recast cue,Focus DoT macros")
     for _, initializer in ipairs(page.initializers) do
         local variable = initializer.setting and initializer.setting.variable or ""
         for _, look in ipairs({"_THEME", "PANEL_COLOR", "TRACKER_OPACITY_", "OUTLINE_WIDTH", "_COMPACT_", "_BARS_",
@@ -5887,7 +5913,7 @@ test("the settings: a module switch each, then pages by topic", function()
         demon[#demon + 1] = initializer.setting.variable
     end
     equal(table.concat(demon, ","),
-        "GRIMOIRE_REMIND_DEMON,GRIMOIRE_PET_DIED,GRIMOIRE_PET_TAUNT,GRIMOIRE_PET_KEY_LABELS")
+        "GRIMOIRE_REMIND_DEMON,GRIMOIRE_PET_DIED,GRIMOIRE_PET_TAUNT,GRIMOIRE_HOTBAR_DEMON,GRIMOIRE_PET_KEY_LABELS")
     for _, gone in ipairs({"Shield", "Cooldown Chimes", "Demon Armor"}) do
         equal(state.categories[gone], nil, "no page pointing to another AddOn: " .. gone)
     end
@@ -7143,6 +7169,70 @@ test("recast cue: yellow edges by default, or the Stones buttons' gold glow", fu
     equal(mark.glow.shown, false, "gone with the recast")
     equal(recastFixture({db = {recast = {style = "sparkles"}}}).wtf.db.recast.style, "edges", "repaired on load")
 end)
+-- Glows on your action bars (0.3.6) ------------------------------------------------
+local function glows(state)
+    return table.concat(state.wtf.HotbarGlows(), ",")
+end
+test("action bars: a stone you can make glows on its bar button, also with the Stones bar hidden", function()
+    local state = stonesFixture({carried = {}, actions = {[1] = {"macro", 1, nil, "! Healthstone"},
+        [2] = {"spell", 693}, [3] = {"item", 5232}, [4] = {"spell", 686}}})
+    state.barsChanged()
+    equal(glows(state), "", "no Soul Shard: nothing can be made")
+    state.fill(1)
+    equal(glows(state), "ActionButton1,ActionButton2,ActionButton3", "the macro, the Create spell, the stone")
+    state.messages = {}
+    state.slash("debug_hotbar")
+    contains(state.messages[1], "shadowBolt=1")
+    -- Shadow Bolt gets the game-drawn Nightfall glow: an aura slot over the button.
+    local proxy
+    for _, frame in ipairs(state.frames) do
+        if frame.container and frame.shown and frame.allPoints == state.env.ActionButton4 then proxy = frame end
+    end
+    assert(proxy, "a frame over Shadow Bolt holding the Nightfall aura slot")
+    local glow = state.env.ActionButton1.grimoireGlow
+    equal(glow.parent, state.env.ActionButton1, "a plain frame on the button")
+    equal(glow.shown, true)
+    state.settings.GRIMOIRE_STONES_SHOWN:SetValue(false)
+    equal(glows(state), "ActionButton1,ActionButton2,ActionButton3", "the Stones bar hidden: the bars still glow")
+    state.combat = true
+    state.settings.GRIMOIRE_HOTBAR_STONES:SetValue(false)
+    state.combat = false
+    state.emit("PLAYER_REGEN_ENABLED")
+    equal(glows(state), "", "its switch")
+    equal(glow.shown, false)
+end)
+test("action bars: a DoT due on your target glows; a focus macro glows for your focus", function()
+    local state = recastFixture({actions = {[1] = {"spell", 6222}, [2] = {"macro", 2, nil, "! Corruption F"}}})
+    state.barsChanged()
+    state.castDot(6222, "Corruption")
+    state.now = state.now + 12.6
+    state.recastTick()
+    equal(state.cues(), "corruption")
+    equal(glows(state), "ActionButton1", "Corruption on the bar, for your target")
+    state.units.focus = state.units.target
+    state.recastTick()
+    equal(glows(state), "ActionButton1,ActionButton2", "and the focus macro, for your focus")
+    state.castDot(6222, "Corruption")
+    state.recastTick()
+    equal(glows(state), "", "recast: gone")
+end)
+test("action bars: focus DoT macros for the DoTs you know, deleted when off", function()
+    local state = stonesFixture({known = {[172] = true, [693] = true}})
+    local function named(name)
+        for _, macro in ipairs(state.macros) do
+            if macro.name == name then return macro end
+        end
+    end
+    equal(named("! Corruption F"), nil, "off by default")
+    state.settings.GRIMOIRE_FOCUS_MACROS:SetValue(true)
+    local corruption = named("! Corruption F")
+    equal(corruption.body, "#showtooltip Corruption\n/cast [@focus,harm,nodead] Corruption")
+    equal(named("! Immolate F"), nil, "only the DoTs you know")
+    equal(state.wtf.FocusMacroFamily("! Corruption F"), "corruption")
+    state.settings.GRIMOIRE_FOCUS_MACROS:SetValue(false)
+    equal(named("! Corruption F"), nil, "off deletes them")
+end)
+
 test("recast cue: settings are repaired, on by default with a 0.5 s lead", function()
     local state = recastFixture({db = {tracker = {health = true}, recast = {enabled = "yes", lead = "soon"}}})
     equal(state.wtf.db.recast.enabled, true)
@@ -7425,9 +7515,13 @@ local function editModeNames(state)
     for _, entry in ipairs(state.editModeFrames) do names[entry.name] = true end
     return names
 end
+-- A member's point and offsets in the strip's units (a member drawn at
+-- another size is scaled, and its offsets are in its own units).
 local function stripSlot(state, frame)
     local point = frame.points[#frame.points]
-    return point[1], point[4], point[5]
+    local scale = frame.scale or 1
+    local function round(value) return value and math.floor(value * scale * 1000 + 0.5) / 1000 end
+    return point[1], round(point[4]), round(point[5])
 end
 test("prep strip: off by default, each frame its own in Edit Mode", function()
     local state = stonesFixture()
@@ -7439,7 +7533,7 @@ test("prep strip: off by default, each frame its own in Edit Mode", function()
     equal(names["Grimoire shard counter"], true)
     equal(names["Grimoire prep strip"], nil)
 end)
-test("prep strip: on, the stones, the counter and the reminder icons share one bar and one dialog", function()
+test("prep strip: on, the stones, the counter, the reminder icons and Nightfall share one bar and one dialog", function()
     local state = stonesFixture({db = {strip = {enabled = true}}})
     local strip = state.env.GrimoireStrip
     local names = editModeNames(state)
@@ -7447,21 +7541,23 @@ test("prep strip: on, the stones, the counter and the reminder icons share one b
     equal(names["Grimoire Stones bar"], nil, "the members are not moved on their own")
     equal(names["Grimoire reminders"], nil)
     equal(names["Grimoire shard counter"], nil)
+    equal(names["Grimoire Nightfall icon"], nil)
     local members = {state.env[SOUL], state.env[HEALTH], state.wtf.shardCounter, state.env.GrimoireReminderArmor,
-        state.env.GrimoireReminderDemon}
+        state.env.GrimoireNightfall, state.env.GrimoireReminderDemon}
     for index, member in ipairs(members) do
         equal(member:GetParent(), strip, "member " .. index .. " in the strip")
         local point, x = stripSlot(state, member)
         equal(point, "LEFT")
         equal(x, 6 + (index - 1) * 42, "member " .. index .. ": its slot in the row")
     end
-    equal(strip.width, 6 * 2 + 36 * 5 + 6 * 4)
+    equal(strip.width, 6 * 2 + 36 * 6 + 6 * 5)
+    equal(state.wtf.shardCounter:GetScale(), 0.9, "the counter, drawn at 40, scaled to the slot")
     equal(state.env.GrimoireStones.shown, false, "the Stones bar itself stays hidden")
     local dialog = {}
     for _, setting in ipairs(state.editModeEntry(strip).settings) do dialog[#dialog + 1] = setting.name end
-    equal(table.concat(dialog, ", "), "Layout, Size, Button spacing, Background")
+    equal(table.concat(dialog, ", "), "Layout, Size, Button spacing, Background, Empty slots")
     state.look(strip, "Layout", "vertical")
-    equal(strip.height, 6 * 2 + 36 * 5 + 6 * 4, "a column")
+    equal(strip.height, 6 * 2 + 36 * 6 + 6 * 5, "a column")
     equal((stripSlot(state, state.wtf.shardCounter)), "TOP")
 end)
 test("prep strip: a member switched off gives up its slot, out of combat", function()
@@ -7471,7 +7567,7 @@ test("prep strip: a member switched off gives up its slot, out of combat", funct
     equal(state.env[SOUL].shown, false, "the stone buttons hide")
     local _, x = stripSlot(state, state.wtf.shardCounter)
     equal(x, 6, "the counter moves up")
-    equal(strip.width, 6 * 2 + 36 * 3 + 6 * 2)
+    equal(strip.width, 6 * 2 + 36 * 4 + 6 * 3)
     state.combat = true
     state.settings.GRIMOIRE_STONES_SHOWN:SetValue(true)
     equal(state.env[SOUL].shown, false, "secure buttons wait for combat to end")
@@ -7481,6 +7577,37 @@ test("prep strip: a member switched off gives up its slot, out of combat", funct
     _, x = stripSlot(state, state.wtf.shardCounter)
     equal(x, 6 + 2 * 42)
     equal(initializerFor(state.categories["Shards and Stones"], "GRIMOIRE_STRIP_ENABLED").setting.default, false)
+end)
+test("prep strip: an empty slot shows, fades, or closes up; Nightfall keeps its slot", function()
+    local state = stonesFixture({db = {strip = {enabled = true}},
+        spellbook = {{spellID = 687, name = "Demon Skin"}, {spellID = 688, name = "Summon Imp"}}})
+    state.now = state.now + 11
+    state.runTimers()
+    local strip, armor = state.env.GrimoireStrip, state.env.GrimoireReminderArmor
+    local function faded()
+        local list = {}
+        for _, child in ipairs(strip.children) do
+            if child.kind == "Texture" and child.desaturated and child.shown then list[#list + 1] = child end
+        end
+        return list
+    end
+    equal(armor.shown, true, "Demon Skin missing")
+    equal(state.wtf.db.strip.empty, "faded", "Faded by default")
+    state.buffs = {["Demon Skin"] = {name = "Demon Skin", spellId = 687, expirationTime = state.now + 600}}
+    state.emit("UNIT_AURA", "player")
+    state.now = state.now + 1
+    state.runTimers()
+    equal(armor.shown, false)
+    equal(select(2, stripSlot(state, state.env.GrimoireNightfall)), 6 + 4 * 42, "Faded: the armor keeps its slot")
+    local dim = faded()
+    equal(#dim >= 4, true, "a dim icon in each slot")
+    equal(dim[4].texture, armor.icon.texture, "the armor's own icon, dim")
+    state.look(strip, "Empty slots", "close")
+    equal(select(2, stripSlot(state, state.env.GrimoireNightfall)), 6 + 3 * 42, "Close up: Nightfall moves up")
+    state.look(strip, "Empty slots", "show")
+    equal(#faded(), 0, "Show: no dim icons")
+    equal(select(2, stripSlot(state, state.env.GrimoireNightfall)), 6 + 4 * 42)
+    equal(stonesFixture({db = {strip = {empty = "sideways"}}}).wtf.db.strip.empty, "faded", "repaired on load")
 end)
 
 local function reminderFixture(extra)
@@ -7517,6 +7644,22 @@ test("reminders: a missing Demon Skin shows its icon and a line; a click casts i
     state.runTimers()
     lines = alertsFrom(state, "armor:ending")
     equal(lines[#lines].text, "Demon Skin ends in 1 min.")
+end)
+
+test("reminders: the icons can be hidden; a missing armor still glows on your action bars", function()
+    local state = reminderFixture({actions = {[1] = {"spell", 687}, [2] = {"spell", 686}}})
+    state.barsChanged()
+    local armor = state.env.GrimoireReminderArmor
+    equal(armor.shown, true)
+    equal(table.concat(state.wtf.HotbarGlows(), ","), "ActionButton1", "Demon Skin on the bar glows")
+    state.settings.GRIMOIRE_REMIND_ICONS:SetValue(false)
+    settle(state)
+    equal(armor.shown, false, "no icon")
+    equal(table.concat(state.wtf.HotbarGlows(), ","), "ActionButton1", "the bar still glows")
+    state.buffs = {["Demon Skin"] = {name = "Demon Skin", spellId = 687, expirationTime = state.now + 600}}
+    state.emit("UNIT_AURA", "player")
+    settle(state)
+    equal(table.concat(state.wtf.HotbarGlows(), ","), "", "armor on: no glow")
 end)
 
 test("reminders: the icons glow while they show for real, not as Edit Mode's samples", function()

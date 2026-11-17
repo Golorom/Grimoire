@@ -55,6 +55,9 @@ function WTF.SanitizeReminders(saved, sanitizePosition)
         demon = saved.demon ~= false,
         -- 0.3.1: the icons glow while they show for real.
         glow = saved.glow ~= false,
+        -- 0.3.6: the icons can be hidden, keeping the lines and the glows
+        -- on your action bars.
+        icons = saved.icons ~= false,
         -- 0.3.3: the icons' look, from their Edit Mode dialog, as the Stones bar's.
         scale = WTF.SanitizeFrameScale(saved.scale),
         position = sanitizePosition(saved.position),
@@ -200,9 +203,12 @@ local function Apply()
     armorButton:SetAttribute("spell", armorName)
     armorButton.icon:SetTexture(SpellIcon(reminders.armor and reminders.armor.ids[1], ICONS.armor))
     armorButton.label = armorName
-    armorButton:SetShown(missing or unlocked)
+    armorButton:SetShown((missing and settings.icons) or unlocked)
     -- A glow while it shows because the armor is missing (not as Edit Mode's sample).
-    WTF.SetGlow(armorButton.glow, settings.glow and missing and not unlocked)
+    WTF.SetGlow(armorButton.glow, settings.glow and settings.icons and missing and not unlocked)
+    if WTF.SetHotbarWant then
+        WTF.SetHotbarWant("armor", missing and not unlocked)
+    end
     -- No lines right after login, while mounted, or while they cannot help
     -- (dead, on a flight path, resting in a city): the icon still shows.
     local quiet = GetTime() < (reminders.quietUntil or 0) or Mounted() or WTF.QuietTime()
@@ -219,9 +225,16 @@ local function Apply()
     demonButton:SetAttribute("spell", summon)
     demonButton.label = summon
     local wanted = settings.demon and summon ~= nil
-    RegisterStateDriver(demonButton, "visibility", unlocked and "show" or (wanted and PET_DRIVER or "hide"))
+    RegisterStateDriver(demonButton, "visibility",
+        unlocked and "show" or ((wanted and settings.icons) and PET_DRIVER or "hide"))
     -- The icon shows only while no demon is out, and the glow with it.
-    WTF.SetGlow(demonButton.glow, settings.glow and wanted and not unlocked)
+    WTF.SetGlow(demonButton.glow, settings.glow and settings.icons and wanted and not unlocked)
+    -- 0.3.6: your demon's summon glows on your action bars while none is out
+    -- (checked out of combat).
+    if WTF.SetHotbarGroup then
+        WTF.SetHotbarGroup("demon", (wanted and not unlocked and not HasLiveDemon()) and {["summon:" .. summon] = true}
+            or {})
+    end
     if not wanted or HasLiveDemon() then
         Settle("demon")
     elseif not quiet then
@@ -373,8 +386,10 @@ function WTF.InitializeReminders()
     if WTF.StripActive() then
         -- 0.3.5: the icons go into the prep strip (Strip.lua), last.
         holder:Hide()
-        WTF.JoinStrip(buttons.armor, 4, function() return WTF.db.reminders.armor end, false)
-        WTF.JoinStrip(buttons.demon, 5, function() return WTF.db.reminders.demon end, false)
+        local settings = WTF.db.reminders
+        WTF.JoinStrip(buttons.armor, 4, function() return settings.armor and settings.icons end)
+        -- Last: in Close up it can show in combat just past the strip's end.
+        WTF.JoinStrip(buttons.demon, 6, function() return settings.demon and settings.icons end, {last = true})
     else
         WTF.RegisterMovable(holder, function(position) WTF.db.reminders.position = position end,
             {name = "Grimoire reminders", default = WTF.EditModeDefault(DEFAULT_POINT)})
