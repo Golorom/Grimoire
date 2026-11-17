@@ -1,0 +1,4 @@
+<Bindings>
+    <Binding name="CLICK GrimoireSmartCurse:LeftButton" runOnUp="true" header="GRIMOIRE"
+        category="ADDONS"/>
+</Bindings>

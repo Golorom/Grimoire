@@ -1,0 +1,43 @@
+## Interface: 16001, 11509
+## Title: Grimoire
+## Notes: Personal Warlock tools for WoW Forever, forked from Warlock Tools Forever by Dyre
+## Author: R.
+## Version: 0.2.2
+## IconTexture: Interface\Icons\INV_Misc_Book_06
+## Category: Warlock
+## SavedVariables: GrimoireAccountDB
+## SavedVariablesPerCharacter: GrimoireDB
+
+Engine\Shim.lua
+Engine\Auras.lua
+Engine\Units.lua
+Engine\HealthBars.lua
+Engine\Spells.lua
+Engine\Macros.lua
+Engine\Announce.lua
+Engine\ClassData.lua
+Engine\Owners.lua
+Engine\Control.lua
+Engine\DotTracker.lua
+Engine\PlateDots.lua
+Engine\DotPredict.lua
+
+Commands.lua
+Core.lua
+Layout.lua
+Shards.lua
+Stones.lua
+Tracker.lua
+Dots.lua
+Predict.lua
+Control.lua
+Alerts.lua
+Reminders.lua
+Threat.lua
+Pet.lua
+Procs.lua
+Cooldowns.lua
+KeyLabels.lua
+Shield.lua
+Probe.lua
+Options.lua
