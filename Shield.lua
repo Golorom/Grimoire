@@ -80,15 +80,17 @@ local REGISTRY_NAME = "ShieldForeverRegistry"
 -- absorb), "Inner" (shields that drain with time), "Innermost" (bubbles).
 local TEXTURE_FOLDER = "Interface\\AddOns\\" .. addonName .. "\\Textures\\"
 local OUTER, INNER, INNERMOST = "", "Inner", "Innermost"
-local FLAT_TEXTURE = "Interface\\Buttons\\WHITE8X8"
 local ARC_SIZE = 160
--- Grimoire: the flat rows style, a bar per crescent: the outer one, then
--- the inner and innermost under it.
-local ROWS_WIDTH = 160
-local ROW_HEIGHT = {[OUTER] = 12, [INNER] = 5, [INNERMOST] = 5}
-local ROW_GAP = 2
-local ROWS_HEIGHT = 12 + 2 + 5 + 2 + 5
-local TRACK_COLOR = {0.06, 0.06, 0.08}
+-- Grimoire: the rows style, a gold-rimmed bar per crescent (ShieldBar*.tga,
+-- the same build script): as rows, the outer one on top and the timed ones
+-- under it; as columns, the outer one on the right and the others left of
+-- it. The sizes match the script's BARS.
+local ROW_LENGTH = 160
+local ROW_THICKNESS = {[OUTER] = 14, [INNER] = 7, [INNERMOST] = 7}
+local ROW_GAP = 3
+local ROW_OFFSET = {[OUTER] = 0, [INNER] = 14 + 3, [INNERMOST] = 14 + 3 + 7 + 3}
+local ROWS_DEPTH = 14 + 3 + 7 + 3 + 7
+local ROW_NUMBER_GAP = 4
 local SIDE_NAMES = {right = "Right", left = "Left", top = "Top", bottom = "Bottom"}
 -- Each crescent's height as a fraction of the square (span in
 -- scripts/build_arc.py). Its texture is stretched to fill that height, so a
@@ -104,7 +106,7 @@ local SPANS = {[OUTER] = OUTER_SPAN, [INNER] = INNER_SPAN, [INNERMOST] = INNERMO
 local DEFAULT_POINT = {"CENTER", "CENTER", 20, -20}
 -- Grimoire: where an unplaced display starts, by side and for the rows.
 local DEFAULT_OFFSETS = {right = {20, -20}, left = {-20, -20}, top = {0, 70}, bottom = {0, -90},
-    rows = {0, -110}}
+    rowsH = {0, -110}, rowsV = {110, 0}}
 -- Scale changes smaller than this are none (the client returns floats).
 local SCALE_EPSILON = 0.01
 -- Classic Era and Anniversary (AuraEngine "lua": no engine, nothing secret):
@@ -342,6 +344,10 @@ function ShieldDisplay.Sanitize(settings)
         -- and the style, an arc or flat rows.
         side = SIDE_NAMES[settings.side] and settings.side or (settings.mirror == true and "left" or "right"),
         style = settings.style == "rows" and "rows" or "arc",
+        -- The rows as rows or columns, and the number under, left or right of them.
+        rowsOrientation = settings.rowsOrientation == "vertical" and "vertical" or "horizontal",
+        rowsNumber = (settings.rowsNumber == "left" or settings.rowsNumber == "right") and settings.rowsNumber
+            or "under",
         breakSound = settings.breakSound == true,
         breakSoundKey = ShieldDisplay.SanitizeBreakSound(settings.breakSoundKey),
         scale = ShieldDisplay.SanitizeScale(settings.scale),
@@ -600,46 +606,72 @@ local function Rows()
     return Config().style == "rows"
 end
 
+local function Vertical()
+    return Rows() and Config().rowsOrientation == "vertical"
+end
+
+local function RowsNumber()
+    local number = Config().rowsNumber
+    return (number == "left" or number == "right") and number or "under"
+end
+
+-- Where an unplaced display starts, and whether anything visible changed.
+local function Place()
+    if Rows() then
+        return Vertical() and "rowsV" or "rowsH"
+    end
+    return Side()
+end
+
 local function Look()
-    return Rows() and "rows" or Side()
+    return Rows() and (Place() .. RowsNumber()) or Side()
+end
+
+local function BarName(crescent, rim)
+    return TEXTURE_FOLDER .. "ShieldBar" .. (rim and "Rim" or "") .. (crescent == OUTER and "" or "Thin")
+        .. (Vertical() and "V" or "H")
 end
 
 local function FillTexture(crescent)
     if Rows() then
-        return FLAT_TEXTURE
+        return BarName(crescent)
     end
     return TEXTURE_FOLDER .. "ShieldRing" .. crescent .. SIDE_NAMES[Side()]
 end
 
 local function RimTexture(crescent)
+    if Rows() then
+        return BarName(crescent, true)
+    end
     return TEXTURE_FOLDER .. "ShieldRing" .. crescent .. "Rim" .. SIDE_NAMES[Side()]
 end
 
--- Beside you the crescents fill from the foot upward; above or below you,
--- and as rows, from the left.
+-- Beside you the crescents fill from the foot upward, and columns from the
+-- bottom; above or below you, and rows, from the left.
 local function Orientation()
+    if Rows() then
+        return Vertical() and "VERTICAL" or "HORIZONTAL"
+    end
     local side = Side()
-    return (Rows() or side == "top" or side == "bottom") and "HORIZONTAL" or "VERTICAL"
+    return (side == "top" or side == "bottom") and "HORIZONTAL" or "VERTICAL"
 end
 
 -- A crescent's region: an arc centered on the display at the crescent's own
--- height (or width, above and below you), or a row. Anchored to the display,
--- not the parent: the outer crescent's parent is the minimum-absorb clipping
--- frame, which reaches below the display for the number (in client, v5 drew
--- the outer crescent off-center). grow: pixels around a row, for its outline.
-local function Fit(region, crescent, grow)
-    grow = grow or 0
+-- height (or width, above and below you), or a row or column. Anchored to the
+-- display, not the parent: the outer crescent's parent is the minimum-absorb
+-- clipping frame, which reaches below the display for the number (in client,
+-- v5 drew the outer crescent off-center).
+local function Fit(region, crescent)
     region:ClearAllPoints()
     if Rows() then
-        local top = 0
-        if crescent ~= OUTER then
-            top = ROW_HEIGHT[OUTER] + ROW_GAP
+        local offset, thickness = ROW_OFFSET[crescent], ROW_THICKNESS[crescent]
+        if Vertical() then
+            region:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -offset, 0)
+            region:SetPoint("BOTTOMLEFT", frame, "BOTTOMRIGHT", -offset - thickness, 0)
+        else
+            region:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, -offset)
+            region:SetPoint("BOTTOMRIGHT", frame, "TOPRIGHT", 0, -offset - thickness)
         end
-        if crescent == INNERMOST then
-            top = top + ROW_HEIGHT[INNER] + ROW_GAP
-        end
-        region:SetPoint("TOPLEFT", frame, "TOPLEFT", -grow, -top + grow)
-        region:SetPoint("BOTTOMRIGHT", frame, "TOPRIGHT", grow, -top - ROW_HEIGHT[crescent] - grow)
         return
     end
     local inset = ARC_SIZE * (1 - SPANS[crescent]) / 2
@@ -653,19 +685,13 @@ local function Fit(region, crescent, grow)
 end
 
 -- Gives a crescent's parts the current look: its empty track, its bars, a
--- plain fill (the sample's), the gold rim of an arc, the dark outline of a row.
+-- plain fill (the sample's), and the gold rim.
 local function Dress(parts, crescent)
-    local rows = Rows()
     if parts.track then
         Fit(parts.track, crescent)
         parts.track:SetTexture(FillTexture(crescent))
-        if rows then
-            parts.track:SetVertexColor(TRACK_COLOR[1], TRACK_COLOR[2], TRACK_COLOR[3])
-            parts.track:SetAlpha(1)
-        else
-            parts.track:SetVertexColor(0, 0, 0)
-            parts.track:SetAlpha(BACKGROUND_ALPHA)
-        end
+        parts.track:SetVertexColor(0, 0, 0)
+        parts.track:SetAlpha(BACKGROUND_ALPHA)
     end
     for _, bar in ipairs(parts.bars or {}) do
         Fit(bar, crescent)
@@ -679,16 +705,12 @@ local function Dress(parts, crescent)
     if parts.rim then
         Fit(parts.rim, crescent)
         parts.rim:SetTexture(RimTexture(crescent))
-        parts.rim:SetShown(not rows)
-    end
-    if parts.outline then
-        Fit(parts.outline, crescent, 1)
-        parts.outline:SetShown(rows)
     end
 end
 
 -- The number: under an arc's foot beside you, under the arc below you,
--- above the arc above you, inside the top row.
+-- above the arc above you; under, left or right of the rows (beside a
+-- column's foot).
 local FEET = {right = {TEXT_X, TEXT_Y, "TOP"}, left = {1 - TEXT_X, TEXT_Y, "TOP"}, bottom = {0.5, TEXT_Y, "TOP"},
     top = {0.5, 1 - TEXT_Y, "BOTTOM"}}
 
@@ -697,9 +719,33 @@ local function PlaceFoot()
     frame.textHolder:ClearAllPoints()
     frame.text:ClearAllPoints()
     if Rows() then
-        frame.foot:SetPoint("CENTER", frame, "TOPLEFT", ROWS_WIDTH / 2, -ROW_HEIGHT[OUTER] / 2)
-        frame.textHolder:SetPoint("CENTER", frame.foot, "CENTER")
-        frame.text:SetPoint("CENTER", frame.textHolder, "CENTER")
+        local number, vertical = RowsNumber(), Vertical()
+        local half = ROW_THICKNESS[OUTER] / 2
+        local anchor
+        if number == "under" then
+            anchor = "TOP"
+            if vertical then
+                frame.foot:SetPoint("CENTER", frame, "BOTTOMRIGHT", -half, -ROW_NUMBER_GAP)
+            else
+                frame.foot:SetPoint("CENTER", frame, "BOTTOM", 0, -ROW_NUMBER_GAP)
+            end
+        elseif number == "left" then
+            anchor = "RIGHT"
+            if vertical then
+                frame.foot:SetPoint("CENTER", frame, "BOTTOMLEFT", -ROW_NUMBER_GAP, half)
+            else
+                frame.foot:SetPoint("CENTER", frame, "TOPLEFT", -ROW_NUMBER_GAP, -half)
+            end
+        else
+            anchor = "LEFT"
+            if vertical then
+                frame.foot:SetPoint("CENTER", frame, "BOTTOMRIGHT", ROW_NUMBER_GAP, half)
+            else
+                frame.foot:SetPoint("CENTER", frame, "TOPRIGHT", ROW_NUMBER_GAP, -half)
+            end
+        end
+        frame.textHolder:SetPoint(anchor, frame.foot, "CENTER")
+        frame.text:SetPoint(anchor, frame.textHolder, anchor)
         return
     end
     local foot = FEET[Side()]
@@ -714,9 +760,9 @@ local function PlaceIcon(button, spot)
     local width = shield.spotCount * ICON_SIZE + (shield.spotCount - 1) * ICON_GAP
     local x = -width / 2 + (spot - 1) * (ICON_SIZE + ICON_GAP)
     button:ClearAllPoints()
-    if Rows() then
-        button:SetPoint("TOPLEFT", frame, "BOTTOM", x, -4)
-    elseif Side() == "top" then
+    if Rows() and RowsNumber() ~= "under" then
+        button:SetPoint("TOPLEFT", frame, "BOTTOM", x, -ROW_NUMBER_GAP)
+    elseif not Rows() and Side() == "top" then
         button:SetPoint("BOTTOMLEFT", frame.text, "TOP", x, -ICON_Y)
     else
         button:SetPoint("TOPLEFT", frame.text, "BOTTOM", x, ICON_Y)
@@ -730,14 +776,15 @@ local function ApplyLook()
     end
     frame.look = look
     if not frame.adopted then
-        if Rows() then
-            frame:SetSize(ROWS_WIDTH, ROWS_HEIGHT)
-        else
+        if not Rows() then
             frame:SetSize(ARC_SIZE, ARC_SIZE)
+        elseif Vertical() then
+            frame:SetSize(ROWS_DEPTH, ROW_LENGTH)
+        else
+            frame:SetSize(ROW_LENGTH, ROWS_DEPTH)
         end
     end
-    Dress({track = frame.background, bars = {frame.bar, frame.timeBar}, rim = frame.rim, outline = frame.outline},
-        OUTER)
+    Dress({track = frame.background, bars = {frame.bar, frame.timeBar}, rim = frame.rim}, OUTER)
     if frame.sample then
         Dress(frame.sample.innerParts, INNER)
         Dress(frame.sample.innermostParts, INNERMOST)
@@ -979,7 +1026,7 @@ local function PlaceRing()
     if position then
         frame:SetPoint(position.point, UIParent, position.relativePoint, position.x, position.y)
     else
-        local offsets = DEFAULT_OFFSETS[Look()]
+        local offsets = DEFAULT_OFFSETS[Place()]
         frame:SetPoint(DEFAULT_POINT[1], UIParent, DEFAULT_POINT[2], offsets[1], offsets[2])
     end
 end
@@ -1069,8 +1116,6 @@ local function CrescentInitializer(entry)
         NoMouse(button)
         local crescent = entry.innermost and INNERMOST or INNER
         button:SetAllPoints(frame)
-        local outline = button:CreateTexture(nil, "BACKGROUND", nil, -8)
-        outline:SetColorTexture(0, 0, 0, 0.85)
         local track = button:CreateTexture(nil, "BACKGROUND")
         local bar = CreateFrame("StatusBar", nil, button)
         bar:SetStatusBarColor(entry.color[1], entry.color[2], entry.color[3])
@@ -1078,7 +1123,7 @@ local function CrescentInitializer(entry)
         rimHolder:SetAllPoints(button)
         rimHolder:SetFrameLevel(bar:GetFrameLevel() + 1)
         local rim = rimHolder:CreateTexture(nil, "OVERLAY")
-        Dress({track = track, bars = {bar}, rim = rim, outline = outline}, crescent)
+        Dress({track = track, bars = {bar}, rim = rim}, crescent)
         local direction = Enum.StatusBarTimerDirection and Enum.StatusBarTimerDirection.RemainingTime
         button:SetDurationBar(bar, {direction = direction})
     end
@@ -1140,8 +1185,6 @@ local function CreateSample()
     frame.sample:SetAllPoints()
     local function Parts(color)
         local parts = {}
-        parts.outline = frame.sample:CreateTexture(nil, "BACKGROUND", nil, -8)
-        parts.outline:SetColorTexture(0, 0, 0, 0.85)
         parts.fill = frame.sample:CreateTexture(nil, "ARTWORK")
         parts.fill:SetVertexColor(color[1], color[2], color[3])
         parts.rim = frame.sample:CreateTexture(nil, "OVERLAY")
@@ -1202,8 +1245,6 @@ local function CreateRing()
     frame.gated:SetPoint("BOTTOMRIGHT", frame.gate:GetStatusBarTexture(), "BOTTOMRIGHT")
     -- Grimoire: the textures, anchors and fill direction come from the look
     -- (ApplyLook, at the end).
-    frame.outline = frame.gated:CreateTexture(nil, "BACKGROUND", nil, -8)
-    frame.outline:SetColorTexture(0, 0, 0, 0.85)
     frame.background = frame.gated:CreateTexture(nil, "BACKGROUND")
     frame.bar = CreateFrame("StatusBar", nil, frame.gated)
     -- Classic without an amount: the same crescent, drained by the shield's time.

@@ -19,12 +19,12 @@ One action reaches another player, and only on your click: a left-click on the H
 - **Predict.** Shows the damage your DoTs will still do on the target's health bar, and DIES when they will finish the mob. While you channel Wrack it counts the faster ticks (built ahead of the talent; not yet checked in game).
 - **Control bar.** Timers for the mobs you Fear or Banish, with `! Fear`, `! Banish`, `! Seduction` and `! Curse` macros kept up to date in your macro list.
 - **Alert window.** Short lines in a window of their own: centered text, no backdrop by default.
-- **Reminders.** Glowing click-to-cast icons for a missing Demon Armor or Demon Skin and a missing demon. Their lines back off (at once, then 2, 5, then every 15 minutes) and stay quiet while you are dead, on a flight path or resting.
+- **Reminders.** Glowing click-to-cast icons for a missing Demon Armor or Demon Skin and a missing demon. Row or column, size, spacing and background are set in Edit Mode, as for the Stones bar. Their lines back off (at once, then 2, 5, then every 15 minutes) and stay quiet while you are dead, on a flight path or resting.
 - **Threat warning.** A line when a mob your Voidwalker or a tank held turns to you: red with a sound in a group, yellow and silent alone.
 - **Demon warnings.** Your demon died; Enslave Demon broke; your demon's taunt is on autocast in a group.
 - **Nightfall.** A sound and an icon when Shadow Trance procs.
 - **Cooldown alerts.** A line just before a chosen spell is ready, timed from your own cast.
-- **Shield display.** A gold-rimmed arc for Sacrifice and other absorbs, to the right, left, top or bottom of your character, or flat rows. Set in Edit Mode.
+- **Shield display.** A gold-rimmed arc for Sacrifice and other absorbs, to the right, left, top or bottom of your character, or gold-rimmed rows or columns with the number under, left or right. Set in Edit Mode.
 - **Pet bar key labels.** Keeps the pet bar's key labels at the size and place of your other bars' labels.
 - **Edit Mode.** Every Grimoire frame moves in the game's own Edit Mode, under its own name, and snaps like the game's frames.
 - **Diagnostics.** While you play, counts whether the game lets addon code read the values Grimoire's features need. Counts only, kept on your computer.

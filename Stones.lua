@@ -29,11 +29,7 @@ local HEALTHSTONE_ICON = "Interface\\Icons\\INV_Stone_04"
 local BUTTON_SIZE = 36
 local PADDING = 6
 local GOLD = {1, 0.82, 0}
-local BROWN = {0.28, 0.16, 0.07, 0.85}
 local DEFAULT_POINT = {"CENTER", "CENTER", 260, -140}
-local BACKDROP = {bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
-    edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border", edgeSize = 12,
-    insets = {left = 3, right = 3, top = 3, bottom = 3}}
 -- Secure buttons run PostClick for both the press and the release.
 local REPEAT_MESSAGE_SECONDS = 0.3
 -- Seconds a requested trade waits for the trade window to open.
@@ -629,7 +625,8 @@ local function CreateStoneButton(bar, name, kind, index)
 end
 
 -- The bar's look from its Edit Mode dialog: a row or a column, the space
--- between the buttons, and the background. Secure buttons, so out of combat.
+-- between the buttons, and the background (EditMode.lua's button bars).
+-- Secure buttons, so out of combat.
 local function ApplyBarLayout()
     local bar = buttons.bar
     if not bar then
@@ -640,69 +637,22 @@ local function ApplyBarLayout()
         return
     end
     stones.layoutPending = false
-    local settings = WTF.db.stones
-    local vertical = settings.layout == "vertical"
-    local long = PADDING * 2 + BUTTON_SIZE * 2 + settings.spacing
-    local short = PADDING * 2 + BUTTON_SIZE
-    bar:SetSize(vertical and short or long, vertical and long or short)
-    for _, button in ipairs({buttons.soulstone, buttons.healthstone}) do
-        local offset = PADDING + (button.index - 1) * (BUTTON_SIZE + settings.spacing)
-        button:ClearAllPoints()
-        if vertical then
-            button:SetPoint("TOP", bar, "TOP", 0, -offset)
-        else
-            button:SetPoint("LEFT", bar, "LEFT", offset, 0)
-        end
-    end
-    if settings.background then
-        bar:SetBackdrop(BACKDROP)
-        bar:SetBackdropColor(BROWN[1], BROWN[2], BROWN[3], BROWN[4])
-        bar:SetBackdropBorderColor(GOLD[1], GOLD[2], GOLD[3])
-    else
-        bar:SetBackdrop(nil)
-    end
+    WTF.LayoutButtonBar(bar, {buttons.soulstone, buttons.healthstone}, WTF.db.stones, BUTTON_SIZE, PADDING)
 end
 
 -- From the Edit Mode dialog: layout, spacing, background.
 function WTF.SetStonesLook(key, value)
     local settings = WTF.db.stones
-    if key == "layout" then
-        settings.layout = WTF.SanitizeChoice(value, WTF.STONES_LAYOUTS, "horizontal")
-    elseif key == "spacing" then
-        settings.spacing = WTF.SanitizeWhole(value, WTF.STONES_SPACING_MIN, WTF.STONES_SPACING_MAX,
-            WTF.STONES_SPACING_DEFAULT)
-    elseif key == "background" then
-        settings.background = value ~= false
-    end
+    local saved = {layout = settings.layout, spacing = settings.spacing, background = settings.background}
+    saved[key] = value
+    WTF.SanitizeButtonBar(saved, settings, WTF.STONES_SPACING_DEFAULT, true)
     ApplyBarLayout()
 end
 
 local function AddStonesEditModeSettings(bar)
-    local function Getter(key)
-        return function() return WTF.db.stones[key] end
-    end
-    WTF.AddEditModeSettings(bar, function(kinds)
-        local layouts = {}
-        for _, choice in ipairs(WTF.STONES_LAYOUTS) do
-            layouts[#layouts + 1] = {text = choice.label, value = choice.key}
-        end
-        return {
-            {kind = kinds.Dropdown, name = "Layout", default = "horizontal", values = layouts, get = Getter("layout"),
-                set = function(_, value) WTF.SetStonesLook("layout", value) end,
-                desc = "A row or a column."},
-            {kind = kinds.Slider, name = "Size", default = WTF.DEFAULT_FRAME_SCALE, minValue = WTF.FRAME_SCALE_MIN,
-                maxValue = WTF.FRAME_SCALE_MAX, valueStep = WTF.FRAME_SCALE_STEP, get = Getter("scale"),
-                set = function(_, value) WTF.SetStonesScale(value) end,
-                desc = "In percent. The same as Stones bar size in Grimoire's settings."},
-            {kind = kinds.Slider, name = "Button spacing", default = WTF.STONES_SPACING_DEFAULT,
-                minValue = WTF.STONES_SPACING_MIN, maxValue = WTF.STONES_SPACING_MAX, valueStep = 1,
-                get = Getter("spacing"), set = function(_, value) WTF.SetStonesLook("spacing", value) end,
-                desc = "The space between the two buttons."},
-            {kind = kinds.Checkbox, name = "Background", default = true, get = Getter("background"),
-                set = function(_, value) WTF.SetStonesLook("background", value) end,
-                desc = "The brown panel with the gold border behind the buttons."},
-        }
-    end)
+    WTF.AddButtonBarSettings(bar, {settings = function() return WTF.db.stones end, setLook = WTF.SetStonesLook,
+        setScale = function(value) WTF.SetStonesScale(value) end, spacing = WTF.STONES_SPACING_DEFAULT,
+        background = true, what = "the buttons"})
 end
 
 -- The bar holds secure buttons, so its size changes only out of combat; it

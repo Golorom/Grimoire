@@ -50,14 +50,20 @@ local holder, buttons = nil, {}
 
 function WTF.SanitizeReminders(saved, sanitizePosition)
     saved = type(saved) == "table" and saved or {}
-    return {
+    local repaired = {
         armor = saved.armor ~= false,
         demon = saved.demon ~= false,
         -- 0.3.1: the icons glow while they show for real.
         glow = saved.glow ~= false,
+        -- 0.3.3: the icons' look, from their Edit Mode dialog, as the Stones bar's.
+        scale = WTF.SanitizeFrameScale(saved.scale),
         position = sanitizePosition(saved.position),
         lastDemon = type(saved.lastDemon) == "string" and saved.lastDemon or nil,
     }
+    if WTF.SanitizeButtonBar then
+        WTF.SanitizeButtonBar(saved, repaired, BUTTON_GAP, false)
+    end
+    return repaired
 end
 
 -- The spells you know, by family: the best armor, and each demon summon.
@@ -277,7 +283,6 @@ local function CreateButton(kind, index)
         "SecureActionButtonTemplate")
     button.kind = kind
     button:SetSize(BUTTON_SIZE, BUTTON_SIZE)
-    button:SetPoint("LEFT", holder, "LEFT", PADDING + (index - 1) * (BUTTON_SIZE + BUTTON_GAP), 0)
     button:RegisterForClicks("AnyUp", "AnyDown")
     button:SetAttribute("useOnKeyDown", false)
     button.icon = button:CreateTexture(nil, "ARTWORK")
@@ -307,6 +312,33 @@ local function Place()
     end
 end
 
+-- The icons' look from their Edit Mode dialog (EditMode.lua's button bars):
+-- a row or a column, size, spacing, background. Secure buttons, so out of
+-- combat; a change in combat waits for it to end.
+-- Keys of their own for the work that waits for combat to end (one job per key).
+local LAYOUT_JOB, SCALE_JOB = {}, {}
+
+local function ApplyLayout()
+    WTF.LayoutButtonBar(holder, {buttons.armor, buttons.demon}, WTF.db.reminders, BUTTON_SIZE, PADDING)
+end
+
+function WTF.SetRemindersLook(key, value)
+    local settings = WTF.db.reminders
+    local saved = {layout = settings.layout, spacing = settings.spacing, background = settings.background}
+    saved[key] = value
+    WTF.SanitizeButtonBar(saved, settings, BUTTON_GAP, false)
+    if holder then
+        WTF.shared.OutOfCombat(LAYOUT_JOB, ApplyLayout)
+    end
+end
+
+function WTF.SetRemindersScale(percent)
+    WTF.db.reminders.scale = WTF.SanitizeFrameScale(percent)
+    if holder then
+        WTF.shared.OutOfCombat(SCALE_JOB, function() WTF.ScaleKeepingCenter(holder, WTF.db.reminders.scale / 100) end)
+    end
+end
+
 function WTF.ResetRemindersPosition()
     WTF.db.reminders.position = nil
     if holder then
@@ -325,8 +357,7 @@ function WTF.ReportRemindersDebug()
 end
 
 function WTF.InitializeReminders()
-    holder = CreateFrame("Frame", "GrimoireReminders", UIParent)
-    holder:SetSize(PADDING * 2 + BUTTON_SIZE * 2 + BUTTON_GAP, BUTTON_SIZE + PADDING * 2)
+    holder = CreateFrame("Frame", "GrimoireReminders", UIParent, "BackdropTemplate")
     holder:SetClampedToScreen(true)
     holder:SetMovable(true)
     holder:EnableMouse(false)
@@ -335,6 +366,12 @@ function WTF.InitializeReminders()
     buttons.armor = CreateButton("armor", 1)
     buttons.demon = CreateButton("demon", 2)
     WTF.reminderButtons = buttons
+    ApplyLayout()
+    WTF.AddButtonBarSettings(holder, {settings = function() return WTF.db.reminders end,
+        setLook = WTF.SetRemindersLook, setScale = WTF.SetRemindersScale, spacing = BUTTON_GAP, background = false,
+        what = "the icons"})
+    -- The saved place is in the holder's own scale, so the scale comes first.
+    holder:SetScale(WTF.db.reminders.scale / 100)
     Place()
     local events = CreateFrame("Frame")
     events:RegisterEvent("PLAYER_ENTERING_WORLD")

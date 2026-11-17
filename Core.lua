@@ -210,7 +210,8 @@ WTF.FRAME_SCALE_MIN = 50
 WTF.FRAME_SCALE_MAX = 150
 WTF.FRAME_SCALE_STEP = 5
 WTF.DEFAULT_FRAME_SCALE = 100
--- The Stones bar's look, set in its Edit Mode dialog (0.3.1).
+-- The Stones bar's and the reminder icons' look, set in their Edit Mode
+-- dialogs (0.3.1, 0.3.3).
 WTF.STONES_LAYOUTS = {{key = "horizontal", label = "Horizontal"}, {key = "vertical", label = "Vertical"}}
 WTF.STONES_SPACING_MIN = 0
 WTF.STONES_SPACING_MAX = 20
@@ -478,14 +479,13 @@ function WTF.SanitizeDB(db)
         macros = stones.macros ~= false,
         remindSoulstone = stones.remindSoulstone ~= false,
         remindHealthstone = stones.remindHealthstone ~= false,
-        layout = WTF.SanitizeChoice(stones.layout, WTF.STONES_LAYOUTS, "horizontal"),
-        spacing = WTF.SanitizeWhole(stones.spacing, WTF.STONES_SPACING_MIN, WTF.STONES_SPACING_MAX,
-            WTF.STONES_SPACING_DEFAULT),
-        background = stones.background ~= false,
         glow = stones.glow ~= false,
         soulstone = soulstone and type(soulstone.name) == "string" and type(soulstone.ends) == "number"
             and {name = soulstone.name, ends = soulstone.ends} or nil,
     }
+    if WTF.SanitizeButtonBar then
+        WTF.SanitizeButtonBar(stones, db.stones, WTF.STONES_SPACING_DEFAULT, true)
+    end
     local tracker = type(db.tracker) == "table" and db.tracker or {}
     db.tracker = {
         enabled = tracker.enabled ~= false,
@@ -777,7 +777,7 @@ function WTF.AddShieldEditModeSettings(frame)
             {kind = kinds.Dropdown, name = "Style", default = "arc",
                 values = {{text = "Arc", value = "arc"}, {text = "Flat rows", value = "rows"}},
                 get = Getter("style"), set = Setter("style", function(value) return value == "rows" and "rows" or "arc" end),
-                desc = "A crescent with a gold rim, or flat bars in rows."},
+                desc = "A crescent with a gold rim, or gold-rimmed bars in rows or columns."},
             {kind = kinds.Dropdown, name = "Side", default = "right",
                 values = {{text = "Right", value = "right"}, {text = "Left", value = "left"},
                     {text = "Top", value = "top"}, {text = "Bottom", value = "bottom"}},
@@ -785,6 +785,22 @@ function WTF.AddShieldEditModeSettings(frame)
                 hidden = function() return WTF.db.shield.style == "rows" end,
                 desc = "Which side of your character the arc curves around. The thin arcs for timed shields "
                     .. "and the shield icons follow after /reload."},
+            {kind = kinds.Dropdown, name = "Orientation", default = "horizontal",
+                values = {{text = "Horizontal", value = "horizontal"}, {text = "Vertical", value = "vertical"}},
+                get = Getter("rowsOrientation"),
+                set = Setter("rowsOrientation", function(value) return value == "vertical" and "vertical" or "horizontal" end),
+                hidden = function() return WTF.db.shield.style ~= "rows" end,
+                desc = "Rows that fill from the left, or columns that fill from the bottom. The thin bars for "
+                    .. "timed shields follow after /reload."},
+            {kind = kinds.Dropdown, name = "Number", default = "under",
+                values = {{text = "Under", value = "under"}, {text = "Left", value = "left"},
+                    {text = "Right", value = "right"}},
+                get = Getter("rowsNumber"),
+                set = Setter("rowsNumber", function(value)
+                    return (value == "left" or value == "right") and value or "under"
+                end),
+                hidden = function() return WTF.db.shield.style ~= "rows" end,
+                desc = "Where the absorb number goes."},
             {kind = kinds.Slider, name = "Size", default = display.DEFAULT_SCALE, minValue = display.SCALE_MIN,
                 maxValue = display.SCALE_MAX, valueStep = display.SCALE_STEP, get = Getter("scale"),
                 set = Setter("scale", display.SanitizeScale), desc = "The arcs or rows, in percent."},

@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.3.3 (2026-11-17)
+
+New files: restart the game client.
+
+Changed
+- Shield arcs: no segment ticks, one smooth bar.
+- Shield rows: gold-rimmed bars like the arcs instead of flat ones. As rows (fill from the left) or columns (fill from the bottom), with the number under, left or right. Orientation and Number in the shield's Edit Mode dialog.
+
+Added
+- Reminder icons: Layout (row or column), Size, Button spacing and Background in their Edit Mode dialog, the same as the Stones bar's. No background by default, as before.
+
 ## 0.3.2 (2026-11-17)
 
 New files: restart the game client.

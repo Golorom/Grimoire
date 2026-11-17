@@ -272,6 +272,84 @@ function WTF.AddEditModeSettings(frame, build)
     return true
 end
 
+-- Bars of buttons (0.3.3): the Stones bar and the reminder icons share one
+-- look and one set of Edit Mode settings: a row or a column, a size, the
+-- space between the buttons, and the brown panel with a gold border behind.
+local BAR_BACKDROP = {bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
+    edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border", edgeSize = 12,
+    insets = {left = 3, right = 3, top = 3, bottom = 3}}
+local BAR_BROWN = {0.28, 0.16, 0.07, 0.85}
+local BAR_GOLD = {1, 0.82, 0}
+
+-- settings: {layout, spacing, background}. Secure buttons: out of combat only.
+function WTF.LayoutButtonBar(bar, list, settings, size, padding)
+    local vertical = settings.layout == "vertical"
+    local long = padding * 2 + size * #list + settings.spacing * (#list - 1)
+    local short = padding * 2 + size
+    bar:SetSize(vertical and short or long, vertical and long or short)
+    for index, button in ipairs(list) do
+        local offset = padding + (index - 1) * (size + settings.spacing)
+        button:ClearAllPoints()
+        if vertical then
+            button:SetPoint("TOP", bar, "TOP", 0, -offset)
+        else
+            button:SetPoint("LEFT", bar, "LEFT", offset, 0)
+        end
+    end
+    if type(bar.SetBackdrop) ~= "function" then
+        return
+    end
+    if settings.background then
+        bar:SetBackdrop(BAR_BACKDROP)
+        bar:SetBackdropColor(BAR_BROWN[1], BAR_BROWN[2], BAR_BROWN[3], BAR_BROWN[4])
+        bar:SetBackdropBorderColor(BAR_GOLD[1], BAR_GOLD[2], BAR_GOLD[3])
+    else
+        bar:SetBackdrop(nil)
+    end
+end
+
+-- The dialog for such a bar. options: settings() returns its saved table;
+-- setLook(key, value) for layout, spacing and background; setScale(percent);
+-- spacing and background: the defaults; what: what the panel is behind.
+function WTF.AddButtonBarSettings(bar, options)
+    local function Get(key)
+        return function() return options.settings()[key] end
+    end
+    local function Look(key)
+        return function(_, value) options.setLook(key, value) end
+    end
+    return WTF.AddEditModeSettings(bar, function(kinds)
+        local layouts = {}
+        for _, choice in ipairs(WTF.STONES_LAYOUTS) do
+            layouts[#layouts + 1] = {text = choice.label, value = choice.key}
+        end
+        return {
+            {kind = kinds.Dropdown, name = "Layout", default = "horizontal", values = layouts, get = Get("layout"),
+                set = Look("layout"), desc = "A row or a column."},
+            {kind = kinds.Slider, name = "Size", default = WTF.DEFAULT_FRAME_SCALE, minValue = WTF.FRAME_SCALE_MIN,
+                maxValue = WTF.FRAME_SCALE_MAX, valueStep = WTF.FRAME_SCALE_STEP, get = Get("scale"),
+                set = function(_, value) options.setScale(value) end, desc = "In percent."},
+            {kind = kinds.Slider, name = "Button spacing", default = options.spacing,
+                minValue = WTF.STONES_SPACING_MIN, maxValue = WTF.STONES_SPACING_MAX, valueStep = 1,
+                get = Get("spacing"), set = Look("spacing"), desc = "The space between the buttons."},
+            {kind = kinds.Checkbox, name = "Background", default = options.background, get = Get("background"),
+                set = Look("background"), desc = "The brown panel with the gold border behind " .. options.what .. "."},
+        }
+    end)
+end
+
+-- Saved bar settings repaired: layout, spacing, background.
+function WTF.SanitizeButtonBar(saved, into, spacing, background)
+    into.layout = WTF.SanitizeChoice(saved.layout, WTF.STONES_LAYOUTS, "horizontal")
+    into.spacing = WTF.SanitizeWhole(saved.spacing, WTF.STONES_SPACING_MIN, WTF.STONES_SPACING_MAX, spacing)
+    if saved.background == nil then
+        into.background = background
+    else
+        into.background = saved.background == true
+    end
+    return into
+end
+
 -- A default place given the way the modules give theirs ({"CENTER", "CENTER", x, y}).
 function WTF.EditModeDefault(point)
     return {point = point[1], x = point[3], y = point[4]}
