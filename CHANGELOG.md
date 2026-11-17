@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.7 (2026-11-17)
+
+Changed
+- The `! Healthstone` and `! Soulstone` macros make a stone on any press while you carry none, so a key works as well as a click. While you carry one, a press uses it and a right-click makes one, as before. The macro changes out of combat only, so using your last stone in combat never starts a cast.
+- README: why the fork exists, play from your action bars, customizing. Wrack and the Shadow Bolt glow marked as not yet tested in game.
+
 ## 0.3.6 (2026-11-17)
 
 New file: restart the game client.

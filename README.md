@@ -1,8 +1,38 @@
 # Grimoire
 
-Personal Warlock tools for World of Warcraft: Forever (interface 16001). Slash command: `/grim`.
+Warlock tools for World of Warcraft Forever (interface 16001), built around your own action bars. Slash command `/grim`.
 
-Grimoire is a fork of [Warlock Tools Forever](https://github.com/jbedworth/WarlockToolsForever) (WTF) 1.8.0 by Dyre (John Bedworth), with the engines of [Dyre's Toolkit](https://github.com/jbedworth/DyresToolkit) bundled inside it. It was made for one player's own use. If you want a maintained, general Warlock addon, use Warlock Tools Forever.
+Made for the default UI. A custom UI or another action bar addon is not guaranteed to work with it.
+
+Grimoire is a fork of [Warlock Tools Forever](https://github.com/jbedworth/WarlockToolsForever) (WTF) 1.8.0 by Dyre (John Bedworth). It started as a way to fit Dyre's addon to one player's needs and change a few features, and grew from there. The engines of [Dyre's Toolkit](https://github.com/jbedworth/DyresToolkit) are bundled inside it. For Dyre's own maintained addon, use Warlock Tools Forever.
+
+## Played from your action bars
+
+This is the main difference from Dyre's addon. Your own action bars are the control, and Grimoire shows when to press what by making the button glow. Each glow has its own switch.
+
+- A stone you can make, on the `! Healthstone` and `! Soulstone` macros, the Create spells or the stones
+- A missing Demon Armor or Demon Skin
+- Your demon's summon while none is out
+- A DoT on your target when it is time to recast it
+- A DoT on your focus, on the focus DoT macros (`! Corruption F` and the others)
+- Shadow Bolt during Nightfall (not yet tested in game)
+
+With the glows, Grimoire's own Stones bar, shard counter and reminder icons can be turned off for a clean screen.
+
+To set it up
+1. Put your DoTs, armor and demon summon on your bars.
+2. Put the `! Healthstone` and `! Soulstone` macros there. A press uses your best stone, or makes one when you carry none, so a key works as well as a click. Turn on focus DoT macros on the DoTs page if you use a focus, and put those on your bars too.
+3. Turn off the Stones bar, the shard counter and the reminder icons if you do not need them.
+
+## Customizing
+
+- Every frame moves in the game's Edit Mode and snaps like the game's own frames.
+- Each frame's look is set in its Edit Mode panel, such as size, layout, spacing, background, theme and colors.
+- Dyre's look or a gold rim for the DoT tracker and the Control bar.
+- An optional prep strip that joins the Stones buttons, the shard counter, the reminder icons and the Nightfall icon in one bar.
+- The shield display as an arc on any side of your character, or as rows or columns.
+- Damage prediction in Dyre's stripes or the game's own bar texture.
+- Settings pages by topic, for what each part does.
 
 ## The one rule
 
@@ -18,13 +48,13 @@ One action reaches another player, and only on your click: a left-click on the H
 - **Action bar glows.** The button on your own bars glows when it is time: a stone you can make, missing armor or demon, a DoT to recast on your target or focus, Shadow Bolt during Nightfall. Grimoire's own buttons can then be hidden.
 - **DoT tracker.** A row per mob you have DoTs on, with the time left on your Curse, Bane, Corruption, Immolate, Siphon Life and Fear. Dyre's look or a gold rim. Optional dots under nameplates.
 - **Recast cue.** A DoT's slot on the tracker pulses when it is time to start casting it again: when its time left is the spell's cast time plus a lead time you set, so the new one lands as the old one ends.
-- **Predict.** Shows the damage your DoTs will still do on the target's health bar, in Dyre's stripes or the game's bar texture, and DIES when they will finish the mob. While you channel Wrack it counts the faster ticks (built ahead of the talent; not yet checked in game).
+- **Predict.** Shows the damage your DoTs will still do on the target's health bar, in Dyre's stripes or the game's bar texture, and DIES when they will finish the mob. While you channel Wrack it counts the faster ticks (not yet tested in game).
 - **Control bar.** Timers for the mobs you Fear or Banish, with `! Fear`, `! Banish`, `! Seduction` and `! Curse` macros kept up to date in your macro list.
 - **Alert window.** Short lines in a window of their own: centered text, no backdrop by default.
 - **Reminders.** Glowing click-to-cast icons for a missing Demon Armor or Demon Skin and a missing demon. Row or column, size, spacing and background are set in Edit Mode, as for the Stones bar. Their lines back off (at once, then 2, 5, then every 15 minutes) and stay quiet while you are dead, on a flight path or resting.
 - **Threat warning.** A line when a mob your Voidwalker or a tank held turns to you: red with a sound in a group, yellow and silent alone.
 - **Demon warnings.** Your demon died; Enslave Demon broke; your demon's taunt is on autocast in a group.
-- **Nightfall.** A sound and an icon when Shadow Trance procs.
+- **Nightfall.** A sound and an icon when Shadow Trance procs, and a glow on Shadow Bolt (not yet tested in game).
 - **Cooldown alerts.** A line just before a chosen spell is ready, timed from your own cast.
 - **Shield display.** A gold-rimmed arc for Sacrifice and other absorbs, to the right, left, top or bottom of your character, or gold-rimmed rows or columns with the number under, left or right. Set in Edit Mode.
 - **Pet bar key labels.** Keeps the pet bar's key labels at the size and place of your other bars' labels.
@@ -38,6 +68,8 @@ One action reaches another player, and only on your click: a left-click on the H
 | Announcements, whispers, emotes, raid markers | yes, optional | removed |
 | Needs Dyre's Toolkit installed | yes, for the tracker, Predict and Control bar | no: the 12 engine files are bundled in `Engine\` under a private namespace |
 | Alert window, reminders, threat, demon, Nightfall and cooldown alerts, shield display | in Dyre's other addons (Buff Reminders, Shields Up, Toolkit) | folded in, rewritten to send nothing |
+| Glows on your own action bars, focus DoT macros | no | yes |
+| Look of each frame | fixed | set in its Edit Mode panel, with Dyre's look or a gold rim |
 | Background diagnostics, pet bar key labels | no | yes |
 | Settings home | inside Dyre's Toolkit's panel | its own page: Options, AddOns, Grimoire |
 | Moving frames | its own unlock, with magnetic snapping | the game's Edit Mode |

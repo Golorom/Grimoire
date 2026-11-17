@@ -2563,6 +2563,24 @@ test("the macros follow your bags and downranking, out of combat only", function
     state.emit("BAG_UPDATE_DELAYED")
     equal(state.macroEdits, edits + 1, "an unchanged body is not rewritten")
 end)
+test("with no stone carried, a press of the macro makes one, so a key works too", function()
+    local state = stonesFixture({carried = {[16892] = 1}})
+    equal(macroBody(state, "! Healthstone"), "#showtooltip Create Healthstone(Rank 3)\n/use Create Healthstone(Rank 3)",
+        "none carried: any press makes one")
+    contains(macroBody(state, "! Soulstone"), "/use [@target,help,nodead][@player] item:16892", "one carried: uses it")
+    state.carried[5511] = 1
+    state.emit("BAG_UPDATE_DELAYED")
+    contains(macroBody(state, "! Healthstone"), "/use item:5511", "made: back to using it")
+    -- Used in combat: the macro waits, so a press there never starts a cast.
+    state.combat = true
+    state.carried[5511] = 0
+    state.carried[16892] = 0
+    state.emit("BAG_UPDATE_DELAYED")
+    contains(macroBody(state, "! Healthstone"), "/use item:5511")
+    state.combat = false
+    state.emit("PLAYER_REGEN_ENABLED")
+    equal(macroBody(state, "! Soulstone"), "#showtooltip Create Soulstone\n/use Create Soulstone")
+end)
 test("macros work without the Macro window's global, and report what is missing", function()
     local state = stonesFixture()
     equal(state.env.MAX_CHARACTER_MACROS, nil)

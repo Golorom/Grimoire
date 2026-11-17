@@ -202,8 +202,20 @@ local function CreateLines(lines, castName)
     end
 end
 
+-- 0.3.7: with none carried, any press makes one, so a key works too (a key
+-- press is always a left click). The macro is rewritten out of combat as
+-- your bags change; in combat it stays as it was, so using your last stone
+-- there never starts a cast.
+local function MakeBody(castName)
+    return "#showtooltip " .. castName .. "\n/use " .. castName
+end
+
 function WTF.HealthstoneMacroBody(rank)
     local best = BestCarriedItem(HEALTHSTONES)
+    local castName = rank and CastName(rank.spell)
+    if not best and castName then
+        return MakeBody(castName)
+    end
     local shown = best or (rank and rank.items[1]) or HEALTHSTONES[#HEALTHSTONES].items[1]
     local lines = {"#showtooltip item:" .. shown}
     CreateLines(lines, rank and CastName(rank.spell))
@@ -216,6 +228,10 @@ end
 
 function WTF.SoulstoneMacroBody(rank)
     local best = BestCarriedItem(SOULSTONES)
+    local castName = rank and C_Spell.GetSpellName(rank.spell)
+    if not best and castName then
+        return MakeBody(castName)
+    end
     local shown = best or (rank and rank.items[1]) or SOULSTONES[#SOULSTONES].items[1]
     local lines = {"#showtooltip item:" .. shown}
     CreateLines(lines, rank and C_Spell.GetSpellName(rank.spell))
