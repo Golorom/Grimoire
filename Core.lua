@@ -810,6 +810,9 @@ function WTF.AddShieldEditModeSettings(frame)
             {kind = kinds.Slider, name = "Icon size", default = display.DEFAULT_SCALE, minValue = display.SCALE_MIN,
                 maxValue = display.SCALE_MAX, valueStep = display.SCALE_STEP, get = Getter("iconScale"),
                 set = Setter("iconScale", display.SanitizeScale)},
+            {kind = kinds.Checkbox, name = "Gold rim", default = true, get = Getter("rim"),
+                set = Setter("rim", function(value) return value ~= false end),
+                desc = "The gold frame around the arcs or bars. The thin ones for timed shields follow after /reload."},
             {kind = kinds.Checkbox, name = "Show the number", default = true, get = Getter("number"),
                 set = Setter("number", function(value) return value ~= false end)},
         }

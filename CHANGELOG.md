@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.4 (2026-11-17)
+
+Added
+- Shield: Gold rim on or off, in its Edit Mode dialog. The thin arcs or bars for timed shields follow after /reload.
+
 ## 0.3.3 (2026-11-17)
 
 New files: restart the game client.

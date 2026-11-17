@@ -7788,7 +7788,14 @@ test("shield: four sides and flat rows from its Edit Mode dialog; 0.2's mirror b
     equal(x, 160 * 0.8, "the number under the foot")
     local names = {}
     for _, setting in ipairs(state.editModeEntry(frame).settings) do names[#names + 1] = setting.name end
-    equal(table.concat(names, ", "), "Style, Side, Orientation, Number, Size, Number size, Icon size, Show the number")
+    equal(table.concat(names, ", "),
+        "Style, Side, Orientation, Number, Size, Number size, Icon size, Gold rim, Show the number")
+    local rim = state.editModeSetting(frame, "Gold rim")
+    rim.set("Modern", false)
+    equal(frame.rim.shown, false, "no rim")
+    equal(frame.sample.innerParts.rim.shown, false)
+    rim.set("Modern", true)
+    equal(frame.rim.shown, true)
     local side, style = state.editModeSetting(frame, "Side"), state.editModeSetting(frame, "Style")
     side.set("Modern", "left")
     equal(frame.bar.statusBarTexture, base .. "Left")
@@ -7850,6 +7857,7 @@ test("shield: four sides and flat rows from its Edit Mode dialog; 0.2's mirror b
     equal(display.Sanitize({mirror = true, side = "top"}).side, "top")
     equal(display.Sanitize({style = "bars"}).style, "arc")
     equal(display.Sanitize({rowsOrientation = "diagonal"}).rowsOrientation, "horizontal")
+    equal(display.Sanitize({}).rim, true, "the rim by default")
     local placed = fixture({db = {shield = {side = "top"}}})
     local point = placed.wtf.ShieldDisplay.frame.points[#placed.wtf.ShieldDisplay.frame.points]
     equal(point[4], 0, "an unplaced display above you starts over your head")

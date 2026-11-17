@@ -344,6 +344,8 @@ function ShieldDisplay.Sanitize(settings)
         -- and the style, an arc or flat rows.
         side = SIDE_NAMES[settings.side] and settings.side or (settings.mirror == true and "left" or "right"),
         style = settings.style == "rows" and "rows" or "arc",
+        -- The gold rim over the arcs and bars (0.3.4: optional).
+        rim = settings.rim ~= false,
         -- The rows as rows or columns, and the number under, left or right of them.
         rowsOrientation = settings.rowsOrientation == "vertical" and "vertical" or "horizontal",
         rowsNumber = (settings.rowsNumber == "left" or settings.rowsNumber == "right") and settings.rowsNumber
@@ -624,7 +626,8 @@ local function Place()
 end
 
 local function Look()
-    return Rows() and (Place() .. RowsNumber()) or Side()
+    local look = Rows() and (Place() .. RowsNumber()) or Side()
+    return Config().rim == false and (look .. "-plain") or look
 end
 
 local function BarName(crescent, rim)
@@ -705,6 +708,7 @@ local function Dress(parts, crescent)
     if parts.rim then
         Fit(parts.rim, crescent)
         parts.rim:SetTexture(RimTexture(crescent))
+        parts.rim:SetShown(Config().rim ~= false)
     end
 end
 
