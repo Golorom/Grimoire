@@ -2,7 +2,8 @@ local _, WTF = ...
 
 -- Grimoire: reminders. Two click-to-cast icons and their alert lines:
 --   armor  shown out of combat while neither Demon Armor nor Demon Skin is on
---          you; a click casts the best one you know. A line warns a minute
+--          you; a click casts the best one you know. Its line repeats less
+--          and less often, and not while you are dead, flying or resting. A line warns a minute
 --          before it runs out (timed from the buff's end, read out of combat,
 --          or from your own cast, which stays readable in combat).
 --   demon  shown while you have no demon (or a dead one) and are not
@@ -16,17 +17,22 @@ local ARMORS = {
     {key = "armor", ids = {706, 1086, 11733, 11734, 11735}, label = "Demon Armor"},
     {key = "skin", ids = {687, 696}, label = "Demon Skin"},
 }
--- Summon Imp, Voidwalker, Succubus, Felhunter.
+-- Summon Imp, Voidwalker, Succubus, Felhunter, and Forever's Incubus (level
+-- 20; no Classic ID, so it is found in the spellbook by its English name).
 local DEMONS = {
     {key = "imp", ids = {688}, label = "Summon Imp"},
     {key = "voidwalker", ids = {697}, label = "Summon Voidwalker"},
     {key = "succubus", ids = {712}, label = "Summon Succubus"},
+    {key = "incubus", ids = {}, names = {"Summon Incubus"}, label = "Summon Incubus"},
     {key = "felhunter", ids = {691}, label = "Summon Felhunter"},
 }
 -- Demon Skin and Demon Armor last 30 minutes in Classic.
 local ARMOR_SECONDS = 30 * 60
 local EXPIRY_LEAD = 60
-local REMIND_THROTTLE = 120
+-- A reminder line repeats while the thing stays missing, less and less
+-- often (0.2.1: every 2 minutes was a nag): at once, then after 2, 5, and
+-- every 15 minutes. It starts over once the armor is on or the demon is out.
+local BACKOFF = {120, 300, 900}
 local REFRESH_DELAY = 0.2
 -- After login the demon and the buffs take a moment to show up; no line
 -- before then (the icons still update), and one refresh right after.
@@ -38,7 +44,8 @@ local GOLD = {1, 0.82, 0}
 local ICONS = {armor = "Interface\\Icons\\Spell_Shadow_RagingScream",
     demon = "Interface\\Icons\\Spell_Shadow_SummonImp"}
 
-local reminders = {generation = 0, pending = false, names = {}, demonNames = {}}
+local reminders = {generation = 0, pending = false, names = {}, demonNames = {}, demonIDs = {},
+    nags = {armor = {count = 0}, demon = {count = 0}}}
 local holder, buttons = nil, {}
 
 function WTF.SanitizeReminders(saved, sanitizePosition)
@@ -58,9 +65,9 @@ local function ReadSpells()
         defs[#defs + 1] = {key = armor.key, ids = armor.ids}
     end
     for _, demon in ipairs(DEMONS) do
-        defs[#defs + 1] = {key = demon.key, ids = demon.ids}
+        defs[#defs + 1] = {key = demon.key, ids = demon.ids, names = demon.names}
     end
-    local byID, _, known = WTF.shared.IndexSpells(defs)
+    local byID, sets, known = WTF.shared.IndexSpells(defs)
     reminders.byID, reminders.known = byID, known
     reminders.armor = nil
     for _, armor in ipairs(ARMORS) do
@@ -71,7 +78,9 @@ local function ReadSpells()
     end
     reminders.anyDemon = false
     for _, demon in ipairs(DEMONS) do
-        reminders.demonNames[demon.key] = C_Spell.GetSpellName(demon.ids[1]) or demon.label
+        reminders.demonNames[demon.key] = demon.ids[1] and C_Spell.GetSpellName(demon.ids[1]) or demon.label
+        -- A demon listed by name: its spell ID is whatever the spellbook holds.
+        reminders.demonIDs[demon.key] = demon.ids[1] or next(sets[demon.key] or {})
         reminders.anyDemon = reminders.anyDemon or known[demon.key] == true
     end
 end
@@ -118,12 +127,12 @@ local function DemonSpell()
     local last = WTF.db.reminders.lastDemon
     for _, demon in ipairs(DEMONS) do
         if reminders.demonNames[demon.key] == last and reminders.known[demon.key] then
-            return last, demon.ids[1]
+            return last, reminders.demonIDs[demon.key]
         end
     end
     for _, demon in ipairs(DEMONS) do
         if reminders.known[demon.key] then
-            return reminders.demonNames[demon.key], demon.ids[1]
+            return reminders.demonNames[demon.key], reminders.demonIDs[demon.key]
         end
     end
 end
@@ -131,6 +140,23 @@ end
 local function SpellIcon(id, fallback)
     local texture = id and type(C_Spell.GetSpellTexture) == "function" and C_Spell.GetSpellTexture(id)
     return texture or fallback
+end
+
+-- One reminder line, backing off while the thing stays missing.
+local function Nag(kind, text)
+    local nag = reminders.nags[kind]
+    local now = GetTime()
+    if nag.last and now - nag.last < BACKOFF[math.min(nag.count, #BACKOFF)] then
+        return
+    end
+    nag.count, nag.last = nag.count + 1, now
+    WTF.Alert(kind, text, "warn", {throttle = 0})
+end
+
+-- The thing is there again: its next reminder comes at once.
+local function Settle(kind)
+    local nag = reminders.nags[kind]
+    nag.count, nag.last = 0, nil
 end
 
 local function HasLiveDemon()
@@ -167,9 +193,13 @@ local function Apply()
     armorButton.icon:SetTexture(SpellIcon(reminders.armor and reminders.armor.ids[1], ICONS.armor))
     armorButton.label = armorName
     armorButton:SetShown(missing or unlocked)
-    local quiet = GetTime() < (reminders.quietUntil or 0)
-    if missing and not Mounted() and not quiet then
-        WTF.Alert("armor", armorName .. " missing. Click the icon.", "warn", {throttle = REMIND_THROTTLE})
+    -- No lines right after login, while mounted, or while they cannot help
+    -- (dead, on a flight path, resting in a city): the icon still shows.
+    local quiet = GetTime() < (reminders.quietUntil or 0) or Mounted() or WTF.QuietTime()
+    if not missing then
+        Settle("armor")
+    elseif not quiet then
+        Nag("armor", armorName .. " missing. Click the icon.")
     end
     -- Demon.
     local demonButton = buttons.demon
@@ -180,8 +210,10 @@ local function Apply()
     demonButton.label = summon
     local wanted = settings.demon and summon ~= nil
     RegisterStateDriver(demonButton, "visibility", unlocked and "show" or (wanted and PET_DRIVER or "hide"))
-    if wanted and not HasLiveDemon() and not Mounted() and not quiet then
-        WTF.Alert("demon", "No demon out. Click the icon to summon.", "warn", {throttle = REMIND_THROTTLE})
+    if not wanted or HasLiveDemon() then
+        Settle("demon")
+    elseif not quiet then
+        Nag("demon", "No demon out. Click the icon to summon.")
     end
 end
 

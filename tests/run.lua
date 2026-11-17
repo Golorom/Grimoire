@@ -1082,6 +1082,7 @@ local function fixture(options)
         end
         -- Unknown methods (layout, colors, and so on) do nothing here.
         return setmetatable(object, {__index = function(_, key)
+            if key == "SetJustifyH" then return function(self, value) rawset(self, "justify", value) end end
             if type(key) == "string" and key:match("^%u") then return function() end end
         end})
     end
@@ -1236,6 +1237,7 @@ local function fixture(options)
     end
     env.GrimoireDB = options.db
     state.env = env
+    if options.beforeLogin then options.beforeLogin(state, env) end
     state.emit("ADDON_LOADED", "Grimoire")
     state.emit("PLAYER_LOGIN")
 
@@ -1371,7 +1373,7 @@ end)
 
 test("login prints the banner from the TOC and the ready hint", function()
     local state = fixture()
-    equal(state.messages[1], "Grimoire: Grimoire " .. state.toc.Version .. " by Dyre")
+    equal(state.messages[1], "Grimoire: Grimoire " .. state.toc.Version .. " by R.")
     contains(state.messages[2], "Type /grim to open the settings.")
     equal(state.wtf.available, true)
 end)
@@ -1977,6 +1979,71 @@ test("using shards lowers the keep count, so new ones above the limit go", funct
     state.stopChannel(8288)
     for _ = 1, 3 do state.press() end
     equal(state.count(), 14, "one of the two is within the limit")
+end)
+-- John, 2026-11-15: a player kept extra shards from a dungeon; leaving one
+-- trims what was gained inside, and keeps what was brought in.
+local function enterInstance(state, inside)
+    state.inInstance = inside
+    state.emit("PLAYER_ENTERING_WORLD")
+end
+test("shards gained in a dungeon and kept go as you leave it", function()
+    local state = fullSoulBagWith({})
+    enterInstance(state, true)
+    equal(state.wtf.db.shards.instanceKeep, 14, "the keep count as you enter is saved")
+    -- Gains WTF did not see as created (for any reason) raise the keep count.
+    state.arrive(3, 1)
+    state.arrive(3, 2)
+    state.press()
+    equal(state.count(), 16, "kept inside")
+    enterInstance(state, false)
+    equal(state.wtf.db.shards.instanceKeep, nil, "cleared as you leave")
+    for _ = 1, 3 do state.press() end
+    equal(state.count(), 14, "trimmed to the limit on the next key presses")
+end)
+test("shards brought into a dungeon stay as you leave, less the ones used", function()
+    local state = fullSoulBagWith({})
+    for slot = 1, 3 do state.arrive(3, slot) end
+    equal(state.count(), 17, "from the bank, for a raid: kept")
+    enterInstance(state, true)
+    equal(state.wtf.db.shards.instanceKeep, 17)
+    state.bags[5].items[1] = nil
+    state.emit("BAG_UPDATE_DELAYED")
+    equal(state.wtf.db.shards.instanceKeep, 16, "a shard used inside lowers it")
+    state.arrive(3, 4)
+    state.arrive(3, 5)
+    equal(state.count(), 18)
+    enterInstance(state, false)
+    for _ = 1, 4 do state.press() end
+    equal(state.count(), 16, "the two gained inside go; the ones brought in stay")
+end)
+test("the keep count as you entered survives a reload inside the dungeon", function()
+    local state = fullSoulBagWith({db = {shards = {instanceKeep = 14}}})
+    state.inInstance = true
+    state.arrive(3, 1)
+    state.arrive(3, 2)
+    enterInstance(state, true)
+    equal(state.wtf.db.shards.instanceKeep, 14, "the saved value stays")
+    state.slash("debug_shards")
+    contains(table.concat(state.messages, "|"), "inInstance=true instanceKeep=14")
+    enterInstance(state, false)
+    for _ = 1, 3 do state.press() end
+    equal(state.count(), 14)
+end)
+test("with shard deletion off, entering and leaving a dungeon deletes nothing", function()
+    local state = fullSoulBagWith({db = {shards = {enabled = false}}})
+    enterInstance(state, true)
+    equal(state.wtf.db.shards.instanceKeep, nil, "nothing saved")
+    state.arrive(3, 1)
+    enterInstance(state, false)
+    state.wtf.db.shards.enabled = true
+    state.press()
+    equal(state.count(), 15, "the shard stays")
+end)
+test("a damaged saved instance keep count is repaired on load", function()
+    for _, value in ipairs({-1, 2.5, "14", 5000}) do
+        local state = fullSoulBagWith({db = {shards = {instanceKeep = value}}})
+        equal(state.wtf.db.shards.instanceKeep, nil, tostring(value))
+    end
 end)
 test("lowering the limit deletes no shard", function()
     local state = fullSoulBagWith({})
@@ -3394,23 +3461,15 @@ test("the stone tooltip explains both clicks and the macro name", function()
     contains(state.tooltip[3], "Right-click: create Lesser Soulstone.")
     contains(state.tooltip[5], "the \"! Soulstone\" macro")
 end)
-test("Spellstone and Firestone show as greyed-out Coming soon switches", function()
+test("no Coming soon placeholders: Spellstone and Firestone wait for a real feature", function()
     local state = fixture()
     for _, variable in ipairs({"GRIMOIRE_STONES_SPELLSTONE", "GRIMOIRE_STONES_FIRESTONE", "GRIMOIRE_STONES_REMIND_SPELLSTONE",
         "GRIMOIRE_STONES_REMIND_FIRESTONE"}) do
-        local setting = state.settings[variable]
-        contains(setting.name, "(Coming soon)")
-        equal(setting:GetValue(), false)
-        setting:SetValue(true)
-        equal(setting:GetValue(), false, "never turns on")
+        equal(state.settings[variable], nil)
     end
-    local disabled = 0
-    for _, initializer in ipairs(state.categories.Stones.initializers) do
-        local predicate = initializer.modifyPredicates[1]
-        if predicate and predicate() == false then disabled = disabled + 1 end
+    for _, setting in pairs(state.settings) do
+        equal(tostring(setting.name):find("Coming soon", 1, true), nil)
     end
-    equal(disabled, 4)
-    equal(state.wtf.db.stones.spellstone, nil, "nothing saved")
 end)
 test("debug_stones lists ranks, carried stones, and level requirements", function()
     local state = stonesFixture()
@@ -6812,8 +6871,21 @@ test("alerts: a line shows in the window, once per throttle, and goes to chat on
     equal(off.env.GrimoireAlerts.shown, false, "the window stays hidden")
 end)
 
-test("alerts: a dark panel, 25% opaque, comes with a line and fades with the newest one", function()
+test("alerts: centered lines and no panel by default; a saved panel from the first look goes once", function()
     local state = fixture()
+    equal(state.env.GrimoireAlertsLog.justify, "CENTER")
+    equal(state.wtf.db.alerts.background, 0)
+    state.wtf.Alert("p", "Text alone.", "info")
+    equal(state.env.GrimoireAlertsPanel.shown, false)
+    local old = fixture({db = {alerts = {background = 25}}})
+    equal(old.wtf.db.alerts.background, 0, "look 1's panel is dropped")
+    equal(old.wtf.db.alerts.lookVersion, 2)
+    local chosen = fixture({db = {alerts = {background = 40, lookVersion = 2}}})
+    equal(chosen.wtf.db.alerts.background, 40, "a panel chosen under look 2 stays")
+end)
+
+test("alerts: the optional dark panel comes with a line and fades with the newest one", function()
+    local state = fixture({db = {alerts = {background = 25, lookVersion = 2}}})
     local panel = state.env.GrimoireAlertsPanel
     equal(panel.shown, false, "nothing to show yet")
     state.wtf.Alert("p", "Hello.", "info")
@@ -6830,10 +6902,7 @@ test("alerts: a dark panel, 25% opaque, comes with a line and fades with the new
     run(3)
     equal(panel.alpha, 0)
     equal(panel.shown, false, "gone with the line")
-    local none = fixture({db = {alerts = {background = 0}}})
-    none.wtf.Alert("p", "Text alone.", "info")
-    equal(none.env.GrimoireAlertsPanel.shown, false)
-    local repaired = fixture({db = {alerts = {background = 300}}})
+    local repaired = fixture({db = {alerts = {background = 300, lookVersion = 2}}})
     equal(repaired.wtf.db.alerts.background, 100)
 end)
 
@@ -6968,8 +7037,35 @@ local function threatFixture(extra)
     return state
 end
 
-test("threat: a mob your demon held warns as you pass it, and again when it turns to you", function()
+test("threat: alone, a mob your demon held gives one yellow, silent line when it turns to you", function()
     local state = threatFixture()
+    state.combat = true
+    local before, sounds = #state.wtf.AlertHistory(), #state.sounds
+    state.threat["Creature-1"] = 0
+    state.emit("UNIT_THREAT_LIST_UPDATE", "target")
+    state.threat["Creature-1"] = 1
+    state.emit("UNIT_THREAT_LIST_UPDATE", "target")
+    equal(#alertsFrom(state, "threat", before), 0, "no line before the pull when alone")
+    state.threat["Creature-1"] = 3
+    state.emit("UNIT_THREAT_SITUATION_UPDATE", "player")
+    local lines = alertsFrom(state, "threat", before)
+    equal(#lines, 1)
+    equal(lines[1].text, "Aggro! Boar is on you.")
+    equal(lines[1].level, "warn")
+    equal(#state.sounds, sounds, "silent")
+    -- After the fight the per-mob throttles are forgotten.
+    state.combat = false
+    state.emit("PLAYER_REGEN_ENABLED")
+    state.combat = true
+    state.threat["Creature-1"] = 0
+    state.emit("UNIT_THREAT_LIST_UPDATE", "target")
+    state.threat["Creature-1"] = 3
+    state.emit("UNIT_THREAT_SITUATION_UPDATE", "player")
+    equal(#alertsFrom(state, "threat", before), 2, "a new fight warns again at once")
+end)
+
+test("threat: in a group, a held mob warns as you pass it, and in red with a sound when it turns", function()
+    local state = threatFixture({group = "party"})
     state.combat = true
     local before = #state.wtf.AlertHistory()
     state.threat["Creature-1"] = 0
@@ -7060,22 +7156,76 @@ test("pet: Enslave Demon breaking warns, also out of combat", function()
     equal(lines[1].text, "Enslave Demon broke!")
 end)
 
-test("pet: low health warns once where it reads, and never from a secret answer", function()
-    local era = fixture({era = true})
-    era.units.pet = {name = "Vw", guid = "Pet-1", health = 300, maxHealth = 1000}
-    era.emit("UNIT_PET", "player")
-    era.combat = true
-    era.emit("UNIT_HEALTH", "pet")
-    local lines = alertsFrom(era, "pet:low")
-    equal(lines[1].text, "Demon low: 30% health.")
-    era.emit("UNIT_HEALTH", "pet")
-    equal(#alertsFrom(era, "pet:low"), 1, "once per dip")
-    local forever = fixture()
-    forever.units.pet = {name = "Vw", guid = "Pet-1", health = 300, maxHealth = 1000}
-    forever.emit("UNIT_PET", "player")
-    forever.combat = true
-    forever.emit("UNIT_HEALTH", "pet")
-    equal(#alertsFrom(forever, "pet:low"), 0, "secret in combat: nothing")
+test("pet: no low-health line or setting (a demon's health is secret on Forever)", function()
+    local state = fixture({db = {pet = {low = true, lowShare = 35}}})
+    equal(state.wtf.db.pet.low, nil)
+    equal(state.wtf.db.pet.lowShare, nil)
+    equal(state.settings.GRIMOIRE_PET_LOW, nil)
+    equal(state.settings.GRIMOIRE_PET_LOW_SHARE, nil)
+end)
+
+local function tauntFixture(options)
+    local state = fixture(options)
+    state.petActions = {[4] = {name = "Torment", autocast = true}}
+    state.env.GetPetActionInfo = function(slot)
+        local action = state.petActions[slot]
+        if action then
+            return action.name, nil, false, false, true, action.autocast
+        end
+    end
+    state.env.UnitGroupRolesAssigned = function() return state.role or "DAMAGER" end
+    local spellName = state.env.C_Spell.GetSpellName
+    state.env.C_Spell.GetSpellName = function(id)
+        if id == 3716 then return "Torment" end
+        return spellName(id)
+    end
+    state.units.pet = {name = "Vw", guid = "Pet-1"}
+    return state
+end
+
+test("pet taunt: in a group, Torment on autocast warns once, and again as the fight starts", function()
+    local state = tauntFixture({group = "party"})
+    local before = #state.wtf.AlertHistory()
+    state.emit("GROUP_ROSTER_UPDATE")
+    local lines = alertsFrom(state, "pet:taunt", before)
+    equal(#lines, 1)
+    equal(lines[1].text, "Pet taunt on: Torment is on autocast in a group. Turn it off.")
+    equal(lines[1].level, "warn")
+    state.emit("PET_BAR_UPDATE")
+    equal(#alertsFrom(state, "pet:taunt", before), 1, "the same text is not repeated")
+    state.now = state.now + 60
+    state.combat = true
+    state.emit("PLAYER_REGEN_DISABLED")
+    equal(#alertsFrom(state, "pet:taunt", before), 2, "once more as combat starts")
+    -- Turned off: quiet, also at the next pull.
+    state.combat = false
+    state.petActions[4].autocast = false
+    state.emit("PET_BAR_UPDATE")
+    state.now = state.now + 60
+    state.combat = true
+    state.emit("PLAYER_REGEN_DISABLED")
+    equal(#alertsFrom(state, "pet:taunt", before), 2)
+end)
+
+test("pet taunt: quiet alone, as the tank, with the setting off, and on a secret answer", function()
+    local alone = tauntFixture()
+    local before = #alone.wtf.AlertHistory()
+    alone.emit("PET_BAR_UPDATE")
+    equal(#alertsFrom(alone, "pet:taunt", before), 0)
+    local tank = tauntFixture({group = "party"})
+    tank.role = "TANK"
+    tank.emit("GROUP_ROSTER_UPDATE")
+    equal(#alertsFrom(tank, "pet:taunt"), 0)
+    local off = tauntFixture({group = "party", db = {pet = {taunt = false}}})
+    off.emit("GROUP_ROSTER_UPDATE")
+    equal(#alertsFrom(off, "pet:taunt"), 0)
+    local hidden = tauntFixture({group = "party"})
+    local token = secret()
+    hidden.secrets[token] = true
+    hidden.petActions[4].autocast = token
+    hidden.emit("GROUP_ROSTER_UPDATE")
+    equal(#alertsFrom(hidden, "pet:taunt"), 0)
+    equal(hidden.settings.GRIMOIRE_PET_TAUNT.name, "Pet taunt warning")
 end)
 
 test("Nightfall: the game plays the Imp chirp for Shadow Trance; the icon's slot watches it", function()
@@ -7445,7 +7595,7 @@ test("diagnostics: switched off, nothing is counted, and turning it off stops a 
 end)
 
 test("diagnostics: a damaged or older record starts clean, and a full one keeps at most 150 checks", function()
-    local damaged = fixture({accountDB = {engine = {}, diagnostics = {version = 1, sessions = -3, since = 7,
+    local damaged = fixture({accountDB = {engine = {}, diagnostics = {version = 2, sessions = -3, since = 7,
         facts = {bad = "x", ["threat.target@idle.world"] = {n = "many", readable = 2, sample = {}}}}}})
     local record = damaged.env.GrimoireAccountDB.diagnostics
     equal(record.sessions, 1, "a bad count becomes 0, then this login")
@@ -7458,7 +7608,7 @@ test("diagnostics: a damaged or older record starts clean, and a full one keeps 
     local many = {}
     for index = 1, 200 do many["check" .. index .. "@idle.world"] = {n = 1, readable = 1} end
     local full = diagnosticsFixture({accountDB = {engine = {focusWorks = true},
-        diagnostics = {version = 1, sessions = 2, facts = many}}})
+        diagnostics = {version = 2, sessions = 2, facts = many}}})
     local count = 0
     for _ in pairs(full.env.GrimoireAccountDB.diagnostics.facts) do count = count + 1 end
     equal(count, 150)
@@ -7540,6 +7690,157 @@ test("diagnostics: the alert log keeps each alert's kind, level and place, never
     state.wtf.db.diagnostics.enabled = false
     state.wtf.Alert("pet:died", "Your demon died.", "danger")
     equal(events[#events].key, "test", "nothing logged while off")
+end)
+
+test("reminders: the armor line backs off (2, 5, then 15 minutes) and starts over once the armor is on", function()
+    local state = reminderFixture()
+    local function lines() return #alertsFrom(state, "armor") end
+    local function poke(seconds)
+        state.now = state.now + seconds
+        state.emit("UNIT_AURA", "player")
+        settle(state)
+    end
+    local first = lines()
+    equal(first >= 1, true, "the first line at once")
+    poke(100)
+    equal(lines(), first, "not within 2 minutes")
+    poke(30)
+    equal(lines(), first + 1, "after 2 minutes")
+    poke(200)
+    equal(lines(), first + 1, "then not within 5")
+    poke(110)
+    equal(lines(), first + 2, "after 5 minutes")
+    poke(600)
+    equal(lines(), first + 2, "then not within 15")
+    poke(310)
+    equal(lines(), first + 3, "after 15 minutes")
+    state.buffs = {["Demon Skin"] = {name = "Demon Skin", spellId = 687, expirationTime = state.now + 600}}
+    poke(1)
+    state.buffs = {}
+    poke(1)
+    equal(lines(), first + 4, "missing again after it was on: at once")
+end)
+
+test("reminders: no lines while dead, on a flight path, or resting; the icon still shows", function()
+    for _, quiet in ipairs({"dead", "taxi", "resting"}) do
+        local state = reminderFixture()
+        state.env.UnitIsDeadOrGhost = function() return quiet == "dead" end
+        state.env.UnitOnTaxi = function() return quiet == "taxi" end
+        state.env.IsResting = function() return quiet == "resting" end
+        local before = #state.wtf.AlertHistory()
+        state.now = state.now + 1000
+        state.emit("UNIT_AURA", "player")
+        settle(state)
+        equal(#alertsFrom(state, "armor", before), 0, quiet)
+        equal(#alertsFrom(state, "demon", before), 0, quiet)
+        equal(state.env.GrimoireReminderArmor.shown, true, quiet .. ": the icon stays")
+        state.wtf.RemindStones()
+        equal(#alertsFrom(state, "stones", before), 0, quiet .. ": stone lines too")
+    end
+end)
+
+test("login: a part that fails to start is reported and the rest still start", function()
+    local handled = {}
+    local state = fixture({beforeLogin = function(state, env)
+        env.geterrorhandler = function() return function(message) handled[#handled + 1] = message end end
+        state.wtf.InitializeThreat = function() error("threat broke") end
+    end})
+    equal(state.wtf.available, true)
+    equal(#state.wtf.startFailures, 1)
+    equal(state.wtf.startFailures[1], "Threat warning")
+    local said = table.concat(state.messages, "\n")
+    contains(said, "Threat warning did not start, so it stays off")
+    contains(said, "threat broke")
+    equal(#handled, 1, "the error handler (BugSack) got it")
+    equal(state.categories["Grimoire"] ~= nil, true, "the settings page is still there")
+    state.clear()
+    state.slash("debug_pet")
+    contains(state.last(), "debug_pet", "later parts started")
+    local clean = fixture()
+    equal(#clean.wtf.startFailures, 0)
+end)
+
+test("diagnostics: a readable false keeps its sample; scrambled combat log lines are counted apart", function()
+    local state = diagnosticsFixture({beforeLogin = function(_, env)
+        env.ChatFrame2 = {AddMessage = function() end}
+    end})
+    passTime(state, 10)
+    local facts = diagnosticFacts(state)
+    equal(facts["threat.hidden@idle.world"].sample, "false")
+    local log = state.env.ChatFrame2
+    state.combat = true
+    state.emit("PLAYER_REGEN_DISABLED")
+    log:AddMessage("|Kq12|k hits |Kq13|k for 10.")
+    log:AddMessage("Plain line.")
+    passTime(state, 4)
+    endFight(state)
+    equal(facts["combatlog.scrambled@combat.world"].readable, 1)
+    equal(facts["combatlog.plain@combat.world"].readable, 1)
+    equal(facts["combatlog.text@combat.world"], nil, "the old misleading check is gone")
+end)
+
+test("diagnostics: once per login, which probed functions this client has", function()
+    local state = diagnosticsFixture({prepareEnv = true})
+    state.env.UnitHealthPercent = function() return 50 end
+    state.env.Enum = state.env.Enum or {}
+    state.env.Enum.UnitAuraSoundTrigger = {Added = 0, Removed = 1}
+    state.env.C_Item.GetWeaponEnchantInfo = function() return false end
+    passTime(state, 10)
+    local facts = diagnosticFacts(state)
+    equal(facts["api.UnitHealthPercent@idle.world"].sample, "function")
+    equal(facts["api.C_VoiceChat.SpeakText@idle.world"].none, 1, "missing in the mock")
+    equal(facts["enum.auraSound.Removed@idle.world"].sample, "1")
+    equal(facts["imbue.mainHand@idle.world"].sample, "false")
+    equal(facts["pet.healthPercent@idle.world"].readable, 1)
+end)
+
+test("reminders: Forever's Summon Incubus, found by name, counts as your last demon", function()
+    local state = reminderFixture()
+    local name = state.env.C_Spell.GetSpellName
+    state.env.C_Spell.GetSpellName = function(id)
+        if id == 990020 then return "Summon Incubus" end
+        return name(id)
+    end
+    state.emit("UNIT_SPELLCAST_SUCCEEDED", "player", "cast-inc", 990020)
+    equal(state.wtf.db.reminders.lastDemon, "Summon Incubus")
+end)
+
+-- A scan of the source, beside the run-time trap below: no file may call a
+-- function that talks to other players. The Healthstone trade (the user's
+-- own click) is the one allowed path, in Stones.lua only.
+test("source scan: no chat, emote, or addon-message call anywhere; trade calls only in Stones.lua", function()
+    local files = {"Alerts.lua", "Commands.lua", "Control.lua", "Cooldowns.lua", "Core.lua", "Dots.lua", "KeyLabels.lua",
+        "Layout.lua", "Options.lua", "Pet.lua", "Predict.lua", "Probe.lua", "Procs.lua", "Reminders.lua", "Shards.lua",
+        "Shield.lua", "Stones.lua", "Threat.lua", "Tracker.lua", "Engine/Announce.lua", "Engine/Auras.lua",
+        "Engine/ClassData.lua", "Engine/Control.lua", "Engine/DotPredict.lua", "Engine/DotTracker.lua",
+        "Engine/HealthBars.lua", "Engine/Macros.lua", "Engine/Owners.lua", "Engine/PlateDots.lua", "Engine/Shim.lua",
+        "Engine/Spells.lua", "Engine/Units.lua"}
+    local banned = {"SendChatMessage", "SendAddonMessage", "SendAddonMessageLogged", "DoEmote", "SendTextEmote",
+        "BNSendWhisper", "BNSendGameData", "SetRaidTarget", "RunMacroText", "SendMail", "InviteUnit", "JoinChannelByName",
+        "RegisterAddonMessagePrefix"}
+    local tradeOnly = {"InitiateTrade", "ClickTradeButton", "AcceptTrade"}
+    for _, file in ipairs(files) do
+        local handle = assert(io.open(file, "r"), file)
+        local lineNumber = 0
+        for line in handle:lines() do
+            lineNumber = lineNumber + 1
+            local code = line:gsub("%-%-.*$", "")
+            for _, name in ipairs(banned) do
+                equal(code:find(name .. "%s*%(") , nil, file .. ":" .. lineNumber .. " calls " .. name)
+            end
+            if file ~= "Stones.lua" then
+                for _, name in ipairs(tradeOnly) do
+                    equal(code:find(name .. "%s*%("), nil, file .. ":" .. lineNumber .. " calls " .. name)
+                end
+            end
+            for _, command in ipairs({"s", "say", "p", "party", "y", "yell", "e", "em", "emote", "w", "whisper", "ra",
+                "raid", "rw", "g", "guild", "i", "instance"}) do
+                equal(code:find('"/' .. command .. ' ', 1, true), nil,
+                    file .. ":" .. lineNumber .. " builds the chat command /" .. command)
+            end
+        end
+        handle:close()
+    end
 end)
 
 test("Grimoire never sends chat, whispers, emotes, or addon messages, in a group or alone", function()

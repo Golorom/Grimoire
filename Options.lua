@@ -54,18 +54,6 @@ local function Flag(page, variable, name, group, key, default, tooltip, onChange
     return Settings.CreateCheckbox(page, setting, tooltip)
 end
 
--- A greyed-out checkbox for a planned feature (author-approved): never on,
--- never saved.
-local function ComingSoon(page, variable, name, tooltip)
-    local setting = Proxy(page, variable, Settings.VarType.Boolean, name .. " (Coming soon)", false,
-        function() return false end, function() end)
-    local initializer = Settings.CreateCheckbox(page, setting, tooltip)
-    if type(initializer.AddModifyPredicate) == "function" then
-        initializer:AddModifyPredicate(function() return false end)
-    end
-    return initializer
-end
-
 local function RefreshShardCounter()
     if WTF.RefreshShardCounter then
         WTF.RefreshShardCounter()
@@ -95,17 +83,6 @@ local function SliderOptions(minValue, maxValue, step, format)
         options:SetLabelFormatter(MinimalSliderWithSteppersMixin.Label.Right, formatter)
     end
     return options
-end
-
--- A greyed-out checkbox that only says something; never saved.
-local function Notice(page, variable, name, tooltip)
-    local setting = Proxy(page, variable, Settings.VarType.Boolean, name, true,
-        function() return true end, function() end)
-    local initializer = Settings.CreateCheckbox(page, setting, tooltip)
-    if type(initializer.AddModifyPredicate) == "function" then
-        initializer:AddModifyPredicate(function() return false end)
-    end
-    return initializer
 end
 
 local function RefreshControl()
@@ -149,7 +126,8 @@ local function AddControlPage(parent)
     if type(CreateSettingsButtonInitializer) == "function" and type(layout) == "table"
             and type(layout.AddInitializer) == "function" then
         layout:AddInitializer(CreateSettingsButtonInitializer("How Fear and your focus work", "Show in chat",
-            WTF.ReportControlHelp, "Say in chat how \"! Fear\", the Focus box, and \"! Banish\" use your focus.",
+            WTF.ReportControlHelp, "Print in your chat frame (only you see it) how \"! Fear\", the Focus box, and "
+                .. "\"! Banish\" use your focus.",
             true))
     end
     Flag(page, "GRIMOIRE_CONTROL_MACROS", "Keep control macros", "control", "macros", true,
@@ -260,19 +238,12 @@ local function AddStonesPage(parent)
         "Keep \"! Healthstone\" and \"! Soulstone\" in your character macros for your action bars: "
             .. "left-click uses your best stone, right-click creates one. Turning this off deletes them.",
         function() WTF.ApplyStoneMacros() end)
-    ComingSoon(page, "GRIMOIRE_STONES_SPELLSTONE", "Spellstone button",
-        "A Spellstone button and macro: left-click uses it, right-click creates one.")
-    ComingSoon(page, "GRIMOIRE_STONES_FIRESTONE", "Firestone button",
-        "A Firestone button and macro: left-click uses it, right-click creates one.")
     Flag(page, "GRIMOIRE_STONES_REMIND_SOULSTONE", "Soulstone reminders", "stones", "remindSoulstone", true,
-        "Say in chat when your Soulstone ends, and when none is up: on entering an instance, joining a group, "
-            .. "or after a fight, at most every 10 minutes.")
+        "A line in the alert window when your Soulstone ends, and when none is up: on entering an instance, "
+            .. "joining a group, or after a fight, at most every 10 minutes. Not while you are dead, on a flight "
+            .. "path, or resting in a city.")
     Flag(page, "GRIMOIRE_STONES_REMIND_HEALTHSTONE", "Healthstone reminders", "stones", "remindHealthstone", true,
-        "Say in chat when you carry no Healthstone, at the same times.")
-    ComingSoon(page, "GRIMOIRE_STONES_REMIND_SPELLSTONE", "Spellstone reminders",
-        "Say in chat when you carry no Spellstone, at the same times.")
-    ComingSoon(page, "GRIMOIRE_STONES_REMIND_FIRESTONE", "Firestone reminders",
-        "Say in chat when you carry no Firestone, at the same times.")
+        "A line in the alert window when you carry no Healthstone, at the same times.")
 end
 
 local function RefreshTracker()
@@ -978,7 +949,7 @@ local function AddAlertsPage(parent)
                 WTF.DEFAULT_ALERT_BACKGROUND)
             WTF.RefreshAlerts()
         end, WTF.ALERT_BACKGROUND_MIN, WTF.ALERT_BACKGROUND_MAX, 5, true,
-        "The dark panel behind the lines. 25% is 75% transparent; 0 shows the text alone.")
+        "A dark panel behind the lines. 0 (the default) shows the text alone; 25% is 75% transparent.")
     Slider(page, "GRIMOIRE_ALERTS_SCALE", "Window size", WTF.DEFAULT_FRAME_SCALE,
         function() return WTF.db.alerts.scale end,
         function(value) WTF.SetAlertsScale(value) end,
@@ -986,28 +957,28 @@ local function AddAlertsPage(parent)
     Heading(layout, "Reminders", "Out of combat. Each has an icon you click to cast.")
     Flag(page, "GRIMOIRE_REMIND_ARMOR", "Demon Armor reminder", "reminders", "armor", true,
         "An icon and a line while neither Demon Armor nor Demon Skin is on you, and a line a minute before it "
-            .. "runs out. Click the icon to cast it.", function() WTF.RefreshReminders() end)
+            .. "runs out. Click the icon to cast it. The line repeats after 2, 5, then every 15 minutes, and "
+            .. "stays quiet while you are dead, on a flight path, or resting in a city.",
+        function() WTF.RefreshReminders() end)
     Flag(page, "GRIMOIRE_REMIND_DEMON", "Demon reminder", "reminders", "demon", true,
         "An icon while you have no demon out (hidden while mounted), and a line after combat. Click it to summon "
-            .. "your last demon.", function() WTF.RefreshReminders() end)
+            .. "your last demon. The line repeats and stays quiet like the armor's.",
+        function() WTF.RefreshReminders() end)
     Heading(layout, "In combat")
     Flag(page, "GRIMOIRE_THREAT_ENABLED", "Threat warning", "threat", "enabled", true,
-        "A red line and a sound when a mob your Voidwalker or a tank held turns to you. Mobs you pull "
-            .. "yourself never warn.")
+        "A line when a mob your Voidwalker or a tank held turns to you: red with a sound in a group, yellow and "
+            .. "silent when you are alone. Mobs you pull yourself never warn.")
     Flag(page, "GRIMOIRE_THREAT_RISK", "Warn before you pull", "threat", "risk", true,
-        "A yellow line and a softer sound when you pass the one holding the mob but it has not turned yet.")
+        "In a group: a yellow line and a softer sound when you pass the one holding the mob but it has not "
+            .. "turned yet.")
     Flag(page, "GRIMOIRE_THREAT_SOUNDS", "Threat sounds", "threat", "sounds", true,
         "The sounds of the two threat lines.")
     Flag(page, "GRIMOIRE_PET_DIED", "Demon died", "pet", "died", true,
         "A red line and a sound when your demon dies in combat, and when Enslave Demon breaks.")
-    Flag(page, "GRIMOIRE_PET_LOW", "Demon low health", "pet", "low", true,
-        "A line when your demon drops below the share below, in combat. Only where the game lets addons read "
-            .. "pet health in combat (/grim debug_checks).")
-    Slider(page, "GRIMOIRE_PET_LOW_SHARE", "Demon low at", WTF.DEFAULT_PET_LOW,
-        function() return WTF.db.pet.lowShare end,
-        function(value)
-            WTF.db.pet.lowShare = WTF.SanitizeWhole(value, WTF.PET_LOW_MIN, WTF.PET_LOW_MAX, WTF.DEFAULT_PET_LOW)
-        end, WTF.PET_LOW_MIN, WTF.PET_LOW_MAX, 5, true, "The health share for the line above.")
+    Flag(page, "GRIMOIRE_PET_TAUNT", "Pet taunt warning", "pet", "taunt", true,
+        "In a group where you are not the tank: a yellow line when your demon's taunt (Torment, Suffering, "
+            .. "Anguish) is on autocast, and once more as a fight starts. Checked out of combat.",
+        function() WTF.RefreshPetTaunt() end)
     Flag(page, "GRIMOIRE_PROCS_SOUND", "Nightfall sound", "procs", "sound", true,
         "The game plays the Imp's spell chirp the moment Nightfall (Shadow Trance) lands, also in combat.",
         ApplyProcSounds)

@@ -1,48 +1,73 @@
-# Grimoire 0.2.0
+# Grimoire
 
-Personal fork of Warlock Tools Forever 1.8.0 by Dyre, with the engines of Dyre's Toolkit 2.9.2 by Dyre in `Engine\`. Both are MIT licensed, Copyright (c) 2026 John Bedworth; see LICENSE.
+Personal Warlock tools for World of Warcraft: Forever (interface 16001). Slash command: `/grim`.
 
-Sources:
-- https://github.com/jbedworth/WarlockToolsForever (1.8.0, commit aec6409)
-- https://github.com/jbedworth/DyresToolkit (2.9.2, commit e8b0094)
-- https://github.com/jbedworth/DyresShieldsUp (1.2.1, commit 8940229): Shield.lua and Textures\ShieldArc*.tga; Grimoire adds a mirror setting and the mirrored *Left.tga copies
-- Threat, cooldown and Nightfall logic follow Dyre's Toolkit Threat.lua and Dyre's Buff Reminders (MIT); the code in Threat.lua, Cooldowns.lua and Procs.lua is Grimoire's own
+Grimoire is a fork of [Warlock Tools Forever](https://github.com/jbedworth/WarlockToolsForever) (WTF) 1.8.0 by Dyre (John Bedworth), with the engines of [Dyre's Toolkit](https://github.com/jbedworth/DyresToolkit) bundled inside it. It was made for one player's own use. If you want a maintained, general Warlock addon, use Warlock Tools Forever.
 
-## Added in 0.2.0
+## The one rule
 
-- Alerts.lua: alert window (slim, fades), /grim test, Alerts settings page.
-- Reminders.lua: Demon Armor/Skin and demon icons with click to cast, reminder lines.
-- Threat.lua: DPS threat warning from UnitThreatSituation.
-- Pet.lua: demon died, Enslave Demon broke, demon low health (where readable).
-- Procs.lua: Nightfall sound (game-played aura sound) and icon.
-- Cooldowns.lua: cooldown ready lines.
-- Shield.lua: Dyre's Shields Up shield display.
-- Stone reminders, Soulstone end and low shards go to the alert window.
-- DoT tracker: Compact and smaller by default; WTF's untouched defaults move once.
-- Raid marker settings dropped. /grim debug_checks.
+Grimoire never sends anything to other players by itself: no chat, whispers, emotes, raid markers or addon messages. Everything it shows is for you only. A test scans the source for send calls on every run.
 
-## Added after 0.2.0
+One action reaches another player, and only on your click: a left-click on the Healthstone button with a friendly player targeted opens a trade and places a Healthstone in it. You press Trade yourself.
 
-- Background diagnostics (Probe.lua; settings page Diagnostics, "Collect logs", on by default): while you play, Grimoire counts whether threat, spell cooldowns, pet health, Shadow Bolt's cast time and the combat log tab come back readable or secret, in and out of combat, in the open world or an instance, and logs the kind of each alert it shows (the last 100). Counts and alert kinds only, no names or GUIDs, kept in GrimoireAccountDB.diagnostics. AddOns cannot write files: the game writes them at logout, /reload, or quitting, so the page's Save button (or /grim debug_log_save) reloads the interface. /grim debug_log shows them with a verdict for each open question; /grim debug_log_reset clears them.
+## What it does
 
-## Changes from upstream
+- **Soul Shards.** Deletes shards that Drain Soul or Shadowburn create above your limit (your soul bag's size, or a number you set). Shards you had, bought or moved in are never deleted. A counter shows how many you carry.
+- **Stones.** A bar with Soulstone and Healthstone buttons: left-click uses, right-click creates. Reminders when none is up.
+- **DoT tracker.** A row per mob you have DoTs on, with the time left on your Curse, Bane, Corruption, Immolate, Siphon Life and Fear. Optional dots under nameplates.
+- **Predict.** Shows the damage your DoTs will still do on the target's health bar, and DIES when they will finish the mob.
+- **Control bar.** Timers for the mobs you Fear or Banish, with `! Fear`, `! Banish`, `! Seduction` and `! Curse` macros kept up to date in your macro list.
+- **Alert window.** Short lines in a window of their own: centered text, no backdrop by default.
+- **Reminders.** Click-to-cast icons for a missing Demon Armor or Demon Skin and a missing demon. Their lines back off (at once, then 2, 5, then every 15 minutes) and stay quiet while you are dead, on a flight path or resting.
+- **Threat warning.** A line when a mob your Voidwalker or a tank held turns to you: red with a sound in a group, yellow and silent alone.
+- **Demon warnings.** Your demon died; Enslave Demon broke; your demon's taunt is on autocast in a group.
+- **Nightfall.** A sound and an icon when Shadow Trance procs.
+- **Cooldown alerts.** A line just before a chosen spell is ready, timed from your own cast.
+- **Shield display.** A crescent beside your character for Sacrifice and other absorbs, on either side.
+- **Pet bar key labels.** Keeps the pet bar's key labels at the size and place of your other bars' labels.
+- **Diagnostics.** While you play, counts whether the game lets addon code read the values Grimoire's features need. Counts only, kept on your computer.
 
-Engine (Toolkit files):
-- Every file: one added second line, `ns = ns.engine`, so the engines run in a private namespace and create no `DyresToolkit` global.
-- Shim.lua: new, sets up that namespace.
-- HealthBars.lua: Grimoire's own claims are allowed; texture path points to Grimoire.
-- Announce.lua: `SendChat` sends nothing.
+## How it differs from Warlock Tools Forever
 
-Removed:
-- Announce.lua and every group message, whisper and emote (summon, Soulstone, Healthstone trade, stone creation, Fear, Banish, Enslave, Howl).
-- Raid markers in "! Banish" and the other macros.
-- Dyre's Toolkit layout mode, settings home and the pages and login notes about Dyre's other AddOns.
-- Commands debug_delete, debug_click, debug_announce, debug_emote.
+| | Warlock Tools Forever 1.8 | Grimoire |
+|---|---|---|
+| Announcements, whispers, emotes, raid markers | yes, optional | removed |
+| Needs Dyre's Toolkit installed | yes, for the tracker, Predict and Control bar | no: the 12 engine files are bundled in `Engine\` under a private namespace |
+| Alert window, reminders, threat, demon, Nightfall and cooldown alerts, shield display | in Dyre's other addons (Buff Reminders, Shields Up, Toolkit) | folded in, rewritten to send nothing |
+| Background diagnostics, pet bar key labels | no | yes |
+| Settings home | inside Dyre's Toolkit's panel | its own page: Options, AddOns, Grimoire |
+| Other classes, other Dyre addons | supported by the Toolkit | Warlock only |
 
-Renamed:
-- Folder and title Grimoire, SavedVariables GrimoireDB and GrimoireAccountDB, slash commands /grim and /grimoire, frame names, settings names, key binding header.
+Internal Lua names are kept as in WTF (the namespace is still called `WTF` in the code), so upstream changes can be compared and ported line by line. See [docs/UPSTREAM.md](docs/UPSTREAM.md).
 
-Defaults:
-- The chat line for each deleted Soul Shard is off.
+## Install
 
-Internal Lua names stay WTF's, so upstream changes can still be compared line by line.
+Copy the `Grimoire` folder into `World of Warcraft\_forever_\Interface\AddOns\`. Restart the game after adding or removing files; `/reload` is enough after changing existing ones.
+
+No other addon is required. BugSack with BugGrabber is useful for catching errors.
+
+## Commands
+
+| Command | Does |
+|---|---|
+| `/grim` | opens the settings |
+| `/grim test` | shows three sample alerts |
+| `/grim unlock`, `/grim lock` | lets you drag Grimoire's frames, then fixes them |
+| `/grim reset` | moves the frames back to their default places |
+| `/grim shards`, `/grim stones` | prints the current state in your chat frame |
+| `/grim debug_log` | prints the diagnostics; `debug_log_save` writes them to disk (a reload), `debug_log_reset` clears them |
+| `/grim debug_...` | read-only diagnostics per part; any unknown word, such as `/grim help`, lists them |
+
+## Documentation
+
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): the files and how they fit together.
+- [docs/FOREVER-API.md](docs/FOREVER-API.md): what addon code can and cannot read on this client, measured in game.
+- [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md): rules, tests, installing a build, reading errors.
+- [docs/UPSTREAM.md](docs/UPSTREAM.md): what came from where, and how to pull upstream changes.
+- [CHANGELOG.md](CHANGELOG.md).
+
+## License and credits
+
+MIT, see [LICENSE](LICENSE). The original work is copyright (c) 2026 John Bedworth (Dyre): Warlock Tools Forever, Dyre's Toolkit, Dyre's Buff Reminders and Dyre's Shields Up, all MIT. Grimoire's changes are released under the same license. Dyre's Sounds is not included: it is not open-licensed.
+
+Grimoire is not Dyre's addon. Please do not report its problems to him.

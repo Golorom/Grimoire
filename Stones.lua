@@ -736,7 +736,7 @@ end
 
 function WTF.RemindStones()
     local settings = WTF.db.stones
-    if not settings.enabled then
+    if not settings.enabled or WTF.QuietTime() then
         return
     end
     if settings.remindSoulstone and BestKnownRank(SOULSTONES) and not SoulstoneUp() then
@@ -900,32 +900,6 @@ function WTF.InitializeStones()
     end
     Refresh()
     WTF.StartStoneStatus()
-end
-
--- /wtf debug_click: what each Stones button does for each mouse button, and
--- the client settings /click depends on.
-function WTF.ReportClickDebug()
-    local function Report(text)
-        WTF.Report("debug_click " .. text)
-    end
-    if not buttons.healthstone then
-        Report("the Stones buttons do not exist (Stones is off)")
-        return
-    end
-    local keyDown = type(GetCVarBool) == "function" and GetCVarBool("ActionButtonUseKeyDown")
-    Report(string.format("ActionButtonUseKeyDown=%s combat=%s healthstoneMode=%s",
-        tostring(keyDown), tostring(InCombatLockdown()), tostring(buttons.healthstone.mode)))
-    for _, button in ipairs({buttons.healthstone, buttons.soulstone}) do
-        local constrained = type(button.HasAccessConstraints) == "function" and button:HasAccessConstraints()
-        local visible = button:IsVisible()
-        Report(string.format("%s useOnKeyDown=%s constrained=%s shown=%s", button:GetName(),
-            tostring(button:GetAttribute("useOnKeyDown")), tostring(constrained), tostring(visible)))
-        for index = 1, 3 do
-            Report(string.format("  button%d type=%s item=%s spell=%s macrotext=%s", index,
-                tostring(button:GetAttribute("type" .. index)), tostring(button:GetAttribute("item" .. index)),
-                tostring(button:GetAttribute("spell" .. index)), tostring(button:GetAttribute("macrotext" .. index))))
-        end
-    end
 end
 
 -- /wtf debug_stones: which create spells you know, which stones you carry,

@@ -2,7 +2,8 @@ local _, WTF = ...
 
 -- Grimoire: threat warning (DPS view), cut down from Dyre's Toolkit 2.9.2's
 -- Threat.lua. UnitThreatSituation stays readable on Forever in combat (the
--- Toolkit's finding; the detailed numbers are secret), so this reads only it:
+-- Toolkit's finding, confirmed by Grimoire's diagnostics in the open world,
+-- 2026-11-16; the threat percent read there too, and is not used yet):
 --   0  no aggro, less threat than the one holding the mob
 --   1  no aggro, but more threat than the one holding it: about to pull
 --   2  aggro, but not the most threat
@@ -10,8 +11,10 @@ local _, WTF = ...
 -- A warning needs someone else to have held the mob first (your Voidwalker
 -- or a tank: a 0 or 1 seen for it), so a mob you pull yourself, solo, never
 -- warns. A secret answer is skipped, never compared.
---   about to pull (0 -> 1)      orange line, the "at risk" sound
---   pulled (0 or 1 -> 2 or 3)   red line, the "aggro" sound
+--   about to pull (0 -> 1)      yellow line, the "at risk" sound; in a group only
+--   pulled (0 or 1 -> 2 or 3)   in a group: red line, the "aggro" sound;
+--                               alone: a yellow line with no sound (0.2.1:
+--                               with a Voidwalker that happens all the time)
 -- Mobs are followed by GUID where it reads, else by their nameplate token.
 
 local UNITS = {"target", "focus"}
@@ -45,6 +48,10 @@ local function MobName(unit)
         return name
     end
     return "a mob"
+end
+
+local function Grouped()
+    return type(IsInGroup) == "function" and IsInGroup() == true
 end
 
 local function Log(text)
@@ -84,14 +91,15 @@ local function Check(unit)
     end
     local name = MobName(unit)
     local now = GetTime()
+    local grouped = Grouped()
     if status >= 2 and (before == nil or before <= 1) then
         if not mob.aggroAt or now - mob.aggroAt > REPEAT then
             mob.aggroAt = now
             Log("aggro " .. name)
-            WTF.Alert("threat:aggro:" .. key, "Aggro! " .. name .. " is on you.", "danger",
-                {throttle = REPEAT, sound = settings.sounds and AGGRO_SOUND or nil})
+            WTF.Alert("threat:aggro:" .. key, "Aggro! " .. name .. " is on you.", grouped and "danger" or "warn",
+                {throttle = REPEAT, sound = grouped and settings.sounds and AGGRO_SOUND or nil})
         end
-    elseif status == 1 and before == 0 and settings.risk then
+    elseif status == 1 and before == 0 and settings.risk and grouped then
         if not mob.riskAt or now - mob.riskAt > REPEAT then
             mob.riskAt = now
             Log("risk " .. name)
@@ -136,6 +144,7 @@ function WTF.InitializeThreat()
     events:SetScript("OnEvent", function(_, event, unit)
         if event == "PLAYER_REGEN_ENABLED" then
             threat.mobs = {}
+            WTF.ForgetAlerts("threat:")
         elseif event == "PLAYER_TARGET_CHANGED" then
             Check("target")
         elseif type(unit) == "string" and unit ~= "player" and unit ~= "pet" then

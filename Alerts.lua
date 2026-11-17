@@ -3,8 +3,9 @@ local _, WTF = ...
 -- Grimoire: the alert window. Short warnings for you only, in a slim window
 -- of their own (not a chat tab, so any chat AddOn or none works): a line
 -- shows the moment it comes, stays for the hold time, then fades out slowly.
--- Lines are left-aligned on a dark panel (25% opaque by default, a setting)
--- that appears with a line and fades with the newest one.
+-- Lines are centered with no backdrop (0.2.1, the user's choice after trying
+-- left-aligned lines on a dark panel). The panel stays as a setting: above 0%
+-- opacity it appears with a line and fades with the newest one.
 -- Nothing is ever sent to other players. The window takes no mouse while
 -- locked, so it never blocks clicks on the world; unlocked, it shows sample
 -- lines and an outline to drag.
@@ -31,8 +32,10 @@ local SAMPLES = {
 WTF.ALERT_HOLD_MIN, WTF.ALERT_HOLD_MAX, WTF.DEFAULT_ALERT_HOLD = 2, 30, 8
 WTF.ALERT_FADE_MIN, WTF.ALERT_FADE_MAX, WTF.DEFAULT_ALERT_FADE = 1, 10, 4
 WTF.ALERT_LINES_MIN, WTF.ALERT_LINES_MAX, WTF.DEFAULT_ALERT_LINES = 2, 8, 4
--- The panel's opacity in percent: 25 is 75% transparent.
-WTF.ALERT_BACKGROUND_MIN, WTF.ALERT_BACKGROUND_MAX, WTF.DEFAULT_ALERT_BACKGROUND = 0, 100, 25
+-- The panel's opacity in percent: 0 (the default) draws none.
+WTF.ALERT_BACKGROUND_MIN, WTF.ALERT_BACKGROUND_MAX, WTF.DEFAULT_ALERT_BACKGROUND = 0, 100, 0
+-- Look 2 (0.2.1): centered, no panel. A saved panel from look 1 goes once.
+local LOOK_VERSION = 2
 
 local alerts = {last = {}, history = {}, lastAt = nil}
 local holder, log, panel
@@ -40,7 +43,12 @@ local holder, log, panel
 -- The saved alert settings, repaired; Core calls this from SanitizeDB.
 function WTF.SanitizeAlerts(saved, sanitizePosition)
     saved = type(saved) == "table" and saved or {}
+    local background = saved.background
+    if (type(saved.lookVersion) == "number" and saved.lookVersion or 1) < LOOK_VERSION then
+        background = nil
+    end
     return {
+        lookVersion = LOOK_VERSION,
         enabled = saved.enabled ~= false,
         chat = saved.chat == true,
         sounds = saved.sounds ~= false,
@@ -49,7 +57,7 @@ function WTF.SanitizeAlerts(saved, sanitizePosition)
         hold = WTF.SanitizeWhole(saved.hold, WTF.ALERT_HOLD_MIN, WTF.ALERT_HOLD_MAX, WTF.DEFAULT_ALERT_HOLD),
         fade = WTF.SanitizeWhole(saved.fade, WTF.ALERT_FADE_MIN, WTF.ALERT_FADE_MAX, WTF.DEFAULT_ALERT_FADE),
         lines = WTF.SanitizeWhole(saved.lines, WTF.ALERT_LINES_MIN, WTF.ALERT_LINES_MAX, WTF.DEFAULT_ALERT_LINES),
-        background = WTF.SanitizeWhole(saved.background, WTF.ALERT_BACKGROUND_MIN, WTF.ALERT_BACKGROUND_MAX,
+        background = WTF.SanitizeWhole(background, WTF.ALERT_BACKGROUND_MIN, WTF.ALERT_BACKGROUND_MAX,
             WTF.DEFAULT_ALERT_BACKGROUND),
     }
 end
@@ -223,6 +231,16 @@ function WTF.Alert(key, text, level, options)
     return true
 end
 
+-- Forgets the throttles of every key that starts with prefix (per-mob keys
+-- after a fight, so the table does not grow all session).
+function WTF.ForgetAlerts(prefix)
+    for key in pairs(alerts.last) do
+        if type(key) == "string" and key:sub(1, #prefix) == prefix then
+            alerts.last[key] = nil
+        end
+    end
+end
+
 -- Forgets a key's throttle, so its next alert shows at once.
 function WTF.ResetAlert(key)
     alerts.last[key] = nil
@@ -275,7 +293,7 @@ function WTF.InitializeAlerts()
     log:SetPoint("TOPLEFT", holder, "TOPLEFT", TEXT_INSET_X, -TEXT_INSET_Y)
     log:SetPoint("BOTTOMRIGHT", holder, "BOTTOMRIGHT", -TEXT_INSET_X, TEXT_INSET_Y)
     log:SetFontObject(GameFontNormalLarge)
-    log:SetJustifyH("LEFT")
+    log:SetJustifyH("CENTER")
     log:SetFading(true)
     log:EnableMouse(false)
     log:SetFrameLevel(panel:GetFrameLevel() + 2)

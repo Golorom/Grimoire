@@ -32,7 +32,7 @@ local casts = {}
 
 -- Grimoire 0.2: what the chat combat log tab gets, for /grim debug_checks:
 -- whether its lines reach addon code as text, or arrive secret.
-local logText = {seen = 0, secret = 0}
+local logText = {seen = 0, secret = 0, kstring = 0}
 
 local function WatchCombatLogText()
     local frame = rawget(_G, "COMBATLOG") or rawget(_G, "ChatFrame2")
@@ -48,6 +48,12 @@ local function WatchCombatLogText()
             logText.last = "secret"
         elseif type(text) == "string" then
             logText.last = text:sub(1, 60)
+            -- A KString: the client's scrambled text ("|K...|k"), shown to
+            -- you but not parseable. Not flagged secret, so it is counted
+            -- apart (0.2.1: the first diagnostics took it for readable).
+            if text:find("|K", 1, true) then
+                logText.kstring = logText.kstring + 1
+            end
         end
     end)
 end
@@ -360,7 +366,9 @@ end
 -- writes when you log out or /reload. It reads only what /grim debug_checks
 -- reads, and never an aura (an aura read in combat raises a client warning).
 -- A check that fails three times stops for the session. Nothing is sent.
-local RECORD_VERSION = 1
+-- 2 (0.2.1): combat log lines split into scrambled and plain, a readable
+-- false keeps its sample, and the API probes; version 1's counts start over.
+local RECORD_VERSION = 2
 local MAX_FACTS = 150
 local SAMPLE_LIMIT = 40
 local COMBAT_INTERVAL = 3
@@ -384,7 +392,16 @@ local ANSWERS = {
 }
 
 local recorder = {generation = 0, castAt = nil, failures = {}, stopped = {}, factCount = 0,
-    logSeen = 0, logSecret = 0}
+    logSeen = 0, logSecret = 0, logKString = 0}
+
+-- Functions the next features would use: does this client have them? Once
+-- per login.
+local API_PROBES = {
+    {"UnitHealthPercent"}, {"C_CurveUtil", "CreateCurve"}, {"C_VoiceChat", "SpeakText"},
+    {"C_Item", "GetWeaponEnchantInfo"}, {"C_UnitAuras", "GetRefreshCarryOverDuration"},
+    {"C_UnitAuras", "AddAuraSound"}, {"C_CooldownViewer"}, {"C_DamageMeter"}, {"C_CombatAudioAlert"},
+    {"C_EditMode", "GetLayouts"},
+}
 
 local function Count(value)
     if type(value) ~= "number" or value < 0 or value ~= math.floor(value) then
@@ -498,10 +515,15 @@ local function Add(check, kind, sample, amount)
     fact.last = Stamp()
 end
 
--- A value's kind, with the value itself as the sample when it is readable.
+-- A value's kind, with the value itself as the sample when it is readable
+-- (false too).
 local function Note(check, value)
     local kind = Kind(value)
-    Add(check, kind, kind == "readable" and value or nil)
+    if kind == "readable" then
+        Add(check, kind, value)
+    else
+        Add(check, kind)
+    end
 end
 
 local function Try(check, run)
@@ -608,15 +630,60 @@ local function Sample()
             Note("auras.hidden", C_Secrets.ShouldAurasBeSecret())
         end
     end)
-    -- The combat log tab's lines since the last sample: counts only.
-    Try("combatlog.text", function()
-        local seen, hidden = logText.seen - recorder.logSeen, logText.secret - recorder.logSecret
-        recorder.logSeen, recorder.logSecret = logText.seen, logText.secret
-        if hidden > 0 then
-            Add("combatlog.text", "secret", nil, hidden)
+    -- The demon's health as a percent: the call a "demon low" icon would use.
+    Try("pet.healthPercent", function()
+        if UnitExists("pet") and type(UnitHealthPercent) == "function" then
+            Add("pet.healthPercent", Kind(UnitHealthPercent("pet")))
         end
-        if seen - hidden > 0 then
-            Add("combatlog.text", "readable", nil, seen - hidden)
+    end)
+    -- The combat log tab's lines since the last sample, counts only: secret,
+    -- scrambled (KStrings), or plain text.
+    Try("combatlog", function()
+        local seen, hidden = logText.seen - recorder.logSeen, logText.secret - recorder.logSecret
+        local scrambled = logText.kstring - recorder.logKString
+        recorder.logSeen, recorder.logSecret, recorder.logKString = logText.seen, logText.secret, logText.kstring
+        if hidden > 0 then
+            Add("combatlog.secret", "secret", nil, hidden)
+        end
+        if scrambled > 0 then
+            Add("combatlog.scrambled", "readable", nil, scrambled)
+        end
+        if seen - hidden - scrambled > 0 then
+            Add("combatlog.plain", "readable", nil, seen - hidden - scrambled)
+        end
+    end)
+end
+
+-- Once per login: which of the probed functions exist, the aura sound
+-- triggers by name, and what the weapon imbue read answers.
+local function SampleClient()
+    for _, path in ipairs(API_PROBES) do
+        local name = table.concat(path, ".")
+        Try("api." .. name, function()
+            local value = rawget(_G, path[1])
+            if path[2] then
+                value = type(value) == "table" and value[path[2]] or nil
+            end
+            if value == nil then
+                Add("api." .. name, "none")
+            else
+                Add("api." .. name, "readable", type(value))
+            end
+        end)
+    end
+    Try("enum.auraSound", function()
+        local triggers = type(Enum) == "table" and Enum.UnitAuraSoundTrigger
+        if type(triggers) ~= "table" then
+            Add("enum.auraSound", "none")
+            return
+        end
+        for name, value in pairs(triggers) do
+            Add("enum.auraSound." .. tostring(name), "readable", tostring(value))
+        end
+    end)
+    Try("imbue.mainHand", function()
+        if type(C_Item) == "table" and type(C_Item.GetWeaponEnchantInfo) == "function" then
+            Note("imbue.mainHand", (C_Item.GetWeaponEnchantInfo()))
         end
     end)
 end
@@ -695,7 +762,7 @@ function WTF.StartDiagnostics()
     for _ in pairs(record.facts) do
         recorder.factCount = recorder.factCount + 1
     end
-    recorder.logSeen, recorder.logSecret = logText.seen, logText.secret
+    recorder.logSeen, recorder.logSecret, recorder.logKString = logText.seen, logText.secret, logText.kstring
     if Enabled() then
         record.sessions = record.sessions + 1
         record.since = record.since or Stamp()
@@ -713,6 +780,7 @@ function WTF.StartDiagnostics()
     frame:SetScript("OnEvent", OnRecorderEvent)
     C_Timer.After(AFTER_LOGIN, function()
         if Enabled() and not InCombatLockdown() then
+            SampleClient()
             Sample()
         end
     end)

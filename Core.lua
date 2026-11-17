@@ -73,6 +73,18 @@ function WTF.MoveRestricted()
     return false
 end
 
+-- No reminder lines while they cannot help (0.2.1): dead or a ghost, on a
+-- flight path, or resting in a city or inn. The icons still show.
+function WTF.QuietTime()
+    if type(UnitIsDeadOrGhost) == "function" and UnitIsDeadOrGhost("player") == true then
+        return true
+    end
+    if type(UnitOnTaxi) == "function" and UnitOnTaxi("player") == true then
+        return true
+    end
+    return type(IsResting) == "function" and IsResting() == true
+end
+
 -- Reads TOC fields so the banner follows the packaged version; never gates operations.
 local function Metadata(field)
     if type(C_AddOns) ~= "table" or type(C_AddOns.GetAddOnMetadata) ~= "function" then
@@ -104,9 +116,9 @@ end
 local REQUIRED_NAMESPACE = {
     "ParseCommand", "HandleCommand",
     "CheckShardCapabilities", "InitializeShards", "ReportShardStatus", "ReportShardDebug",
-    "DebugDeleteShard", "RefreshShardCounter", "ResetShardCounterPosition",
+    "RefreshShardCounter", "ResetShardCounterPosition",
     "CheckStoneCapabilities", "InitializeStones", "ResetStonesPosition", "ReportStoneDebug", "RefreshStonesMover",
-    "ReportStoneStatus", "RemindStones", "ApplyStoneMacros", "AddInputHandler", "RunOnNextInput", "ReportClickDebug",
+    "ReportStoneStatus", "RemindStones", "ApplyStoneMacros", "AddInputHandler", "RunOnNextInput",
     "Warn", "RegisterMovable", "BeginDrag", "EndDrag", "ScaleKeepingCenter",
     "CharacterMacrosAvailable", "WriteCharacterMacro",
     "DeleteCharacterMacro", "ApplyControlMacros",
@@ -124,7 +136,8 @@ local REQUIRED_NAMESPACE = {
     "ReportDiagnostics", "ResetDiagnostics", "SaveDiagnostics", "NoteAlertEvent", "InitializeOptions", "OpenSettings",
     "SanitizeAlerts", "InitializeAlerts", "RefreshAlerts", "Alert", "TestAlerts", "ResetAlertsPosition",
     "SanitizeReminders", "InitializeReminders", "RefreshReminders", "ResetRemindersPosition",
-    "SanitizeThreat", "InitializeThreat", "SanitizePet", "InitializePet",
+    "SanitizeThreat", "InitializeThreat", "SanitizePet", "InitializePet", "RefreshPetTaunt",
+    "QuietTime", "ForgetAlerts",
     "SanitizeProcs", "InitializeProcs", "RefreshProcs", "ResetProcsPosition",
     "SanitizeCooldowns", "InitializeCooldowns",
     "SanitizeKeyLabels", "InitializeKeyLabels", "RefreshKeyLabels",
@@ -159,6 +172,9 @@ WTF.SHARD_LOW_MIN = 0
 WTF.SHARD_LOW_MAX = 10
 WTF.DEFAULT_SHARD_LOW = 2
 
+-- More shards than any bags can carry: a larger saved value is damaged.
+local INSTANCE_KEEP_MAX = 1000
+
 local function IsWholeNumber(value)
     return type(value) == "number" and value == math.floor(value)
 end
@@ -168,6 +184,14 @@ function WTF.SanitizeShardLimit(value)
         return WTF.DEFAULT_SHARD_LIMIT
     end
     return math.max(WTF.SHARD_LIMIT_MIN, math.min(WTF.SHARD_LIMIT_MAX, value))
+end
+
+-- The shards kept when you entered an instance (Shards.lua), or nil outside one.
+function WTF.SanitizeInstanceKeep(value)
+    if not IsWholeNumber(value) or value < 0 or value > INSTANCE_KEEP_MAX then
+        return nil
+    end
+    return value
 end
 
 function WTF.SanitizeShardLow(value)
@@ -434,6 +458,7 @@ function WTF.SanitizeDB(db)
         counterLow = WTF.SanitizeShardLow(shards.counterLow),
         counterPosition = SanitizePosition(shards.counterPosition),
         counterScale = WTF.SanitizeFrameScale(shards.counterScale),
+        instanceKeep = WTF.SanitizeInstanceKeep(shards.instanceKeep),
     }
     local stones = type(db.stones) == "table" and db.stones or {}
     local soulstone = type(stones.soulstone) == "table" and stones.soulstone or nil
@@ -855,6 +880,27 @@ local function LoadDB()
     WTF.db = GrimoireDB
 end
 
+-- Runs one part's start. A failure is reported in chat, handed to the game's
+-- error handler with its stack (so BugSack keeps it), and noted in
+-- WTF.startFailures; the caller goes on with the next part.
+WTF.startFailures = {}
+
+local function Start(name, start)
+    local failure
+    local ok = xpcall(start, function(message)
+        failure = message
+        local handler = type(geterrorhandler) == "function" and geterrorhandler()
+        if type(handler) == "function" then
+            pcall(handler, message)
+        end
+        return message
+    end)
+    if not ok then
+        WTF.startFailures[#WTF.startFailures + 1] = name
+        WTF.Report(name .. " did not start, so it stays off: " .. tostring(failure))
+    end
+end
+
 local events = CreateFrame("Frame")
 events:RegisterEvent("ADDON_LOADED")
 events:RegisterEvent("PLAYER_LOGIN")
@@ -891,28 +937,34 @@ events:SetScript("OnEvent", function(self, event, loadedName)
     -- Called directly rather than from each file's own PLAYER_LOGIN handler,
     -- so startup never depends on event handler order.
     UseShared()
-    InstallInputHooks()
+    -- Each part starts on its own (0.2.1): one that fails says so, goes to the
+    -- error handler (BugSack), and the others still start.
+    Start("Input hooks", InstallInputHooks)
     -- The alert window first: the other modules write to it.
-    WTF.InitializeAlerts()
-    WTF.InitializeShards()
-    WTF.InitializeStones()
+    Start("Alert window", WTF.InitializeAlerts)
+    Start("Soul Shards", WTF.InitializeShards)
+    Start("Stones", WTF.InitializeStones)
     if WTF.shared then
         -- The predictor first: the DoT tracker's rows draw its damage.
-        WTF.InitializePredict()
-        WTF.InitializeTracker()
-        WTF.InitializeControl()
-        WTF.InitializePlateDots()
-        WTF.InitializeReminders()
-        WTF.InitializeProcs()
+        Start("DoT prediction", WTF.InitializePredict)
+        Start("DoT tracker", WTF.InitializeTracker)
+        Start("Control bar", WTF.InitializeControl)
+        Start("Nameplate dots", WTF.InitializePlateDots)
+        Start("Reminders", WTF.InitializeReminders)
+        Start("Nightfall", WTF.InitializeProcs)
     end
-    WTF.InitializeThreat()
-    WTF.InitializePet()
-    WTF.InitializeCooldowns()
-    WTF.InitializeKeyLabels()
-    WTF.ShieldDisplay.Initialize({settings = function() return WTF.db.shield end, report = WTF.Report,
-        unlockHint = "Drag to move. /grim lock when done", missingSounds = function() end})
-    WTF.InitializeProbe()
-    WTF.StartDiagnostics()
-    WTF.InitializeOptions()
-    WTF.RefreshGrid()
+    Start("Threat warning", WTF.InitializeThreat)
+    Start("Demon warnings", WTF.InitializePet)
+    Start("Cooldown alerts", WTF.InitializeCooldowns)
+    Start("Key labels", WTF.InitializeKeyLabels)
+    Start("Shield display", function()
+        WTF.ShieldDisplay.Initialize({settings = function() return WTF.db.shield end, report = WTF.Report,
+            unlockHint = "Drag to move. /grim lock when done", missingSounds = function() end})
+    end)
+    Start("Diagnostics", function()
+        WTF.InitializeProbe()
+        WTF.StartDiagnostics()
+    end)
+    Start("Settings", WTF.InitializeOptions)
+    Start("Grid", WTF.RefreshGrid)
 end)
