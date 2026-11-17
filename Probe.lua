@@ -416,6 +416,9 @@ local API_PROBES = {
     {"C_Item", "GetWeaponEnchantInfo"}, {"C_UnitAuras", "GetRefreshCarryOverDuration"},
     {"C_UnitAuras", "AddAuraSound"}, {"C_CooldownViewer"}, {"C_DamageMeter"}, {"C_CombatAudioAlert"},
     {"C_EditMode", "GetLayouts"},
+    -- 0.2.3: the game's own rotation helper (retail's Assisted Combat). If
+    -- Forever has it, a key that reacts to the fight exists without an addon.
+    {"C_AssistedCombat"}, {"C_AssistedCombat", "IsAvailable"}, {"C_AssistedCombat", "GetNextCastSpell"},
 }
 
 local function Count(value)
@@ -657,6 +660,20 @@ local function Sample()
     Try("pet.healthPercent", function()
         if UnitExists("pet") and type(UnitHealthPercent) == "function" then
             Add("pet.healthPercent", Kind(UnitHealthPercent("pet")))
+        end
+    end)
+    -- The game's rotation helper, where the client has one: is it on for this
+    -- character, and does its next spell read (a spell ID, in and out of combat)?
+    Try("assisted", function()
+        local assisted = rawget(_G, "C_AssistedCombat")
+        if type(assisted) ~= "table" then
+            return
+        end
+        if type(assisted.IsAvailable) == "function" then
+            Note("assisted.available", (assisted.IsAvailable()))
+        end
+        if type(assisted.GetNextCastSpell) == "function" then
+            Note("assisted.next", (assisted.GetNextCastSpell(false)))
         end
     end)
     -- The combat log tab's lines since the last sample, counts only: secret,
