@@ -37,7 +37,7 @@ local TOOLKIT_FILES = {"Engine/Shim.lua", "Engine/Auras.lua", "Engine/Units.lua"
 local TOOLKIT_DIR = ""
 local RUNTIME_FILES = {"Commands.lua", "Core.lua", "EditMode.lua", "Glow.lua", "Strip.lua", "Hotbar.lua", "Shards.lua", "Stones.lua", "Tracker.lua",
     "Dots.lua", "Predict.lua", "Recast.lua", "Control.lua", "Alerts.lua", "Reminders.lua", "Threat.lua", "Pet.lua", "Procs.lua",
-    "Cooldowns.lua", "KeyLabels.lua", "Shield.lua", "Probe.lua", "Options.lua"}
+    "Cooldowns.lua", "Shield.lua", "Probe.lua", "Options.lua"}
 local SHARD = 6265
 local SPELLS = {[688] = "Summon Imp", [697] = "Summon Voidwalker", [691] = "Summon Felhunter",
     [7812] = "Sacrifice", [2641] = "Dismiss Pet", [17941] = "Shadow Trance", [1120] = "Drain Soul", [11675] = "Drain Soul", [8288] = "Drain Soul", [686] = "Shadow Bolt", [172] = "Corruption",
@@ -773,6 +773,15 @@ local function fixture(options)
             state.categoryOrder[#state.categoryOrder + 1] = name
             return category
         end
+        local function withLayout(page)
+            page.headings = {}
+            local layout = {}
+            function layout:AddInitializer(heading)
+                heading.position = #page.initializers
+                page.headings[#page.headings + 1] = heading
+            end
+            return page, layout
+        end
         local function initializer(category, setting, extra)
             local object = {setting = setting, options = extra}
             function object:SetParentInitializer(parent, predicate)
@@ -793,18 +802,11 @@ local function fixture(options)
         env.MinimalSliderWithSteppersMixin = {Label = {Right = "right"}}
         env.Settings = {
             VarType = {Boolean = "boolean", Number = "number", String = "string"},
-            RegisterVerticalLayoutCategory = function(name) return newCategory(name) end,
-            -- Returns the page and its layout, as the client does; a heading the
-            -- layout gets is kept on the page.
+            -- Each returns the page and its layout, as the client does; a heading
+            -- the layout gets is kept on the page.
+            RegisterVerticalLayoutCategory = function(name) return withLayout(newCategory(name)) end,
             RegisterVerticalLayoutSubcategory = function(parent, name)
-                local page = newCategory(name, parent)
-                page.headings = {}
-                local layout = {}
-                function layout:AddInitializer(heading)
-                    heading.position = #page.initializers
-                    page.headings[#page.headings + 1] = heading
-                end
-                return page, layout
+                return withLayout(newCategory(name, parent))
             end,
             RegisterCanvasLayoutSubcategory = function(parent, frame, name)
                 local page = newCategory(name, parent)
@@ -1456,6 +1458,23 @@ local function soulBag(size)
         [3] = {size = 0, family = 0, items = {}},
         [4] = {size = 0, family = 0, items = {}},
     }
+end
+
+-- The Cues page: one output of one row, ticked or unticked as a click does.
+local function cue(state, key, column, on)
+    local page = state.categories["Cues"].frame
+    page:OnRefresh()
+    for _, row in ipairs(page.rows) do
+        if row.key == key then
+            local check = row.cells[column]
+            if on ~= nil then
+                check:SetChecked(on)
+                check.scripts.OnClick(check)
+            end
+            return check
+        end
+    end
+    error("no cue " .. tostring(key))
 end
 
 -- Commands ----------------------------------------------------------------------
@@ -2692,7 +2711,7 @@ test("stone button changes in combat wait for combat to end", function()
     state.emit("PLAYER_REGEN_ENABLED")
     equal(state.env[SOUL].attributes.macrotext1, "/use [@target,help,nodead][@player] item:5232")
 end)
-test("the Stones bar follows the module and show settings, after combat if needed", function()
+test("the Stones bar follows its one switch, after combat if needed", function()
     local state = stonesFixture()
     local bar = state.env.GrimoireStones
     equal(bar.shown, true)
@@ -2700,11 +2719,16 @@ test("the Stones bar follows the module and show settings, after combat if neede
     equal(bar.shown, false)
     state.settings.GRIMOIRE_STONES_SHOWN:SetValue(true)
     state.combat = true
-    state.settings.GRIMOIRE_STONES_ENABLED:SetValue(false)
+    state.settings.GRIMOIRE_STONES_SHOWN:SetValue(false)
     equal(bar.shown, true, "unchanged in combat")
     state.combat = false
     state.emit("PLAYER_REGEN_ENABLED")
     equal(bar.shown, false)
+    equal(state.settings.GRIMOIRE_STONES_ENABLED, nil, "0.4.0: one switch")
+    -- 0.3's two switches become the one: off if either was.
+    equal(stonesFixture({db = {stones = {enabled = false}}}).wtf.db.stones.shown, false)
+    equal(stonesFixture({db = {stones = {shown = false}}}).wtf.db.stones.shown, false)
+    equal(stonesFixture({db = {stones = {enabled = true}}}).wtf.db.stones.shown, true)
 end)
 test("the Stones bar moves in Edit Mode under its name and remembers its place", function()
     local state = stonesFixture()
@@ -2763,6 +2787,31 @@ test("the low shard warning is a setting, 2 by default", function()
     equal(state.wtf.db.shards.counterLow, 10, "kept within 0 to 10")
     local saved = fixture({db = {shards = {counterLow = "lots"}}})
     equal(saved.wtf.db.shards.counterLow, 2, "a bad saved value becomes the default")
+end)
+test("the low shard line has its own switch, apart from the counter's", function()
+    local function lowLines(state)
+        local count = 0
+        for _, line in ipairs(state.wtf.AlertHistory()) do
+            if line.key == "shards:low" then count = count + 1 end
+        end
+        return count
+    end
+    -- Two of four shards spent.
+    local function spend(state)
+        state.bags[0].items[3], state.bags[0].items[4] = nil, nil
+        state.emit("BAG_UPDATE_DELAYED")
+    end
+    local state = fixture()
+    state.fill(4)
+    state.settings.GRIMOIRE_SHARDS_COUNTER:SetValue(false)
+    spend(state)
+    equal(lowLines(state), 1, "the counter hidden: the line still comes")
+    local quiet = fixture()
+    quiet.fill(4)
+    cue(quiet, "shards", "alert", false)
+    spend(quiet)
+    equal(lowLines(quiet), 0, "its switch")
+    equal(quiet.wtf.shardCounter.shown, true, "the counter stays")
 end)
 test("the shard counter moves in Edit Mode, saves its place, and resets", function()
     local state = fixture()
@@ -3369,16 +3418,14 @@ local function initializerFor(page, variable)
     end
 end
 
-test("the Control page explains how Fear, Banish, and your focus work", function()
+test("the main page explains how Fear, Banish, and your focus work", function()
     local state = fixture()
-    local page = state.categories.Control
-    local heading, button
+    local page = state.categories.Grimoire
+    equal(state.categories.Control, nil, "0.4.0: no page of its own")
+    local button
     for _, entry in ipairs(page.headings) do
-        if entry.heading then heading = heading or entry end
-        if entry.buttonClick then button = button or entry end
+        if entry.buttonClick and entry.name == "How Fear and your focus work" then button = entry end
     end
-    equal(heading.heading, "Fear, Banish, and your focus")
-    contains(heading.tooltip, "Shift-press it to fear another mob and keep your focus")
     equal(button.name, "How Fear and your focus work")
     equal(button.buttonText, "Show in chat")
     state.clear()
@@ -3391,16 +3438,15 @@ test("the Control page explains how Fear, Banish, and your focus work", function
     contains(state.messages[4], "\"! Banish\" works the same way")
     contains(state.messages[5], "Where the game has no focus (Classic Era), the macros fear or banish the mob "
         .. "under your mouse, else your target")
-    local macros = initializerFor(state.categories["Action Bars"], "GRIMOIRE_CONTROL_MACROS")
+    local macros = initializerFor(state.categories["Grimoire"], "GRIMOIRE_CONTROL_MACROS")
     contains(macros.tooltip, "\"! Fear\" makes the mob under your mouse (else your target) your focus and fears it")
-    contains(macros.tooltip, "The Focus box above the Control bar shows your focus's Fear")
     equal(macros.tooltip:find("moon", 1, true), nil, "Grimoire: no marker")
     local main = initializerFor(state.categories["Grimoire"], "GRIMOIRE_CONTROL_ENABLED")
     contains(main.tooltip, "Click the Focus box to fear your focus again")
 end)
 test("size sliders are labeled without (%): their values show the % sign", function()
     local state = fixture()
-    local slider = initializerFor(state.categories.DoTs, "GRIMOIRE_PREDICT_OPACITY")
+    local slider = initializerFor(state.categories["Damage Prediction"], "GRIMOIRE_PREDICT_OPACITY")
     equal(slider.setting.name, "Block opacity")
     equal(slider.options.label, "right")
     equal(slider.options.formatter(80), "80%", "the value shows its % sign")
@@ -3630,16 +3676,14 @@ test("stone buttons glow when none is carried and one can be made now", function
     state.env.C_Container.GetItemCooldown = function() return 0, 0, 1 end
     state.emit("BAG_UPDATE_DELAYED")
     equal(soul.glow.shown, true)
-    state.settings.GRIMOIRE_STONES_GLOW:SetValue(false)
-    equal(soul.glow.shown, false, "its switch")
-    equal(health.glow.shown, false)
+    equal(state.settings.GRIMOIRE_STONES_GLOW, nil, "0.4.0: the bar's buttons always glow for it")
     local carrying = stonesFixture()
     carrying.fill(1)
     equal(carrying.env[SOUL].glow.shown, false, "a stone in the bags: nothing to make")
     equal(carrying.env[HEALTH].glow.shown, false)
     carrying.clear()
     carrying.slash("debug_stones")
-    contains(table.concat(carrying.messages, "\n"), "debug_stones glow setting=true soulstone=false healthstone=false")
+    contains(table.concat(carrying.messages, "\n"), "debug_stones glow bar=true soulstone=false healthstone=false")
 end)
 
 test("/grim reset moves the Stones bar back, after combat if needed", function()
@@ -3912,7 +3956,7 @@ test("a Soulstone on someone is remembered, reported, and announced when it ends
     end
     equal(#history, 2, "two stone lines")
     equal(history[1].text, "Soulstone on Meatrod Theog ended.")
-    equal(history[2].text, "No Soulstone up. Left-click the Soulstone button.")
+    equal(history[2].text, "No Soulstone up.")
     equal(history[2].level, "warn")
     equal(state.wtf.db.stones.soulstone, nil)
 end)
@@ -3941,8 +3985,8 @@ test("reminders come after a fight, in an instance, or in a new group, at most e
     state.emit("PLAYER_REGEN_ENABLED")
     local lines = StoneLines()
     equal(#lines, start + 2)
-    equal(lines[start + 1], "No Soulstone. Right-click the Soulstone button to make one.")
-    equal(lines[start + 2], "No Healthstone. Right-click the Healthstone button to make one.")
+    equal(lines[start + 1], "No Soulstone. You can make one.")
+    equal(lines[start + 2], "No Healthstone.")
     state.emit("GROUP_JOINED")
     equal(#StoneLines(), start + 2, "throttled")
     state.now = state.now + 601
@@ -5005,7 +5049,7 @@ test("the DoTs page keeps what the tracker does; its look is in each part's Edit
     for _, heading in ipairs(page.headings) do
         if heading.heading then names[#names + 1] = heading.heading end
     end
-    equal(table.concat(names, ","), "Nameplate dots,Curse slot,DoT damage prediction,Recast cue")
+    equal(table.concat(names, ","), "Nameplate dots,Curse slot,Recast timing")
     for _, initializer in ipairs(page.initializers) do
         local variable = initializer.setting and initializer.setting.variable or ""
         for _, look in ipairs({"_THEME", "PANEL_COLOR", "TRACKER_OPACITY_", "OUTLINE_WIDTH", "_COMPACT_", "_BARS_",
@@ -5909,49 +5953,126 @@ end)
 
 -- Settings page ----------------------------------------------------------------
 
-test("the settings: a module switch each, then pages by topic", function()
+-- The variables of a page's settings, in order, without the prefix.
+local function variablesOf(page)
+    local names = {}
+    for _, initializer in ipairs(page.initializers) do
+        names[#names + 1] = (initializer.setting.variable:gsub("GRIMOIRE_", ""))
+    end
+    return table.concat(names, ",")
+end
+
+test("the settings: frames and macros on the main page, then pages by topic; each switch once", function()
     local state = fixture()
     local main = state.categories["Grimoire"]
-    local page = state.categories["Shards and Stones"]
+    local page = state.categories["Soul Shards"]
     equal(state.registered, main)
     equal(page.parent, main)
-    equal(main.initializers[1].setting.variable, "GRIMOIRE_SHARDS_ENABLED")
-    equal(main.initializers[2].setting.variable, "GRIMOIRE_STONES_ENABLED")
-    equal(main.initializers[3].setting.variable, "GRIMOIRE_TRACKER_ENABLED")
-    equal(main.initializers[5].setting.variable, "GRIMOIRE_SHIELD_ENABLED", "the shield's switch with the others")
+    equal(variablesOf(main), "TRACKER_ENABLED,CONTROL_ENABLED,CONTROL_PLATE_TIMERS,SHIELD_ENABLED,STONES_SHOWN,"
+        .. "SHARDS_COUNTER,STRIP_ENABLED,STONES_MACROS,CONTROL_MACROS,FOCUS_MACROS,PREP_MACRO",
+        "what shows on screen, then the macros")
+    local headings = {}
+    for _, entry in ipairs(main.headings) do
+        if entry.heading then headings[#headings + 1] = entry.heading end
+    end
+    equal(table.concat(headings, ","), "On screen,Macros")
+    contains(main.headings[1].tooltip, "press Esc, then Edit Mode")
     local order = {}
     for _, name in ipairs(state.categoryOrder) do
         if state.categories[name].parent == main then order[#order + 1] = name end
     end
     equal(table.concat(order, ", "),
-        "Action Bars, Shards and Stones, DoTs, DoT Order and Colors, Control, Armor and Demon, Alerts, Diagnostics")
-    equal(state.categories.Stones, nil, "stones share the shards' page")
-    equal(state.categories.Announce, nil, "Grimoire: no Announce page")
-    local demon = {}
-    for _, initializer in ipairs(state.categories["Armor and Demon"].initializers) do
-        demon[#demon + 1] = initializer.setting.variable
+        "Cues, Warnings, Soul Shards, DoTs, Damage Prediction, DoT Order and Colors, Diagnostics")
+    for _, gone in ipairs({"Stones", "Announce", "Shield", "Cooldown Chimes", "Demon Armor", "Action Bars",
+            "Shards and Stones", "Control", "Armor and Demon", "Alerts"}) do
+        equal(state.categories[gone], nil, "no page: " .. gone)
     end
-    equal(table.concat(demon, ","), "GRIMOIRE_REMIND_ARMOR,GRIMOIRE_REMIND_DEMON,GRIMOIRE_REMIND_ICONS,"
-        .. "GRIMOIRE_REMIND_GLOW,GRIMOIRE_PET_DIED,GRIMOIRE_THREAT_PET_LOST,GRIMOIRE_PET_TAUNT")
-    local bars = {}
-    for _, initializer in ipairs(state.categories["Action Bars"].initializers) do
-        bars[#bars + 1] = initializer.setting.variable:gsub("GRIMOIRE_", "")
+    equal(variablesOf(state.categories.Warnings):sub(1, 126), "ALERTS_ENABLED,ALERTS_CHAT,ALERTS_SOUNDS,"
+        .. "THREAT_ENABLED,THREAT_RISK,THREAT_RISK_AT,PET_DIED,THREAT_PET_LOST,PET_TAUNT,COOLDOWN",
+        "the alert window, then the lines about a fight")
+    equal(variablesOf(page), "SHARDS_ENABLED,SHARDS_AUTO_LIMIT,SHARDS_LIMIT,SHARDS_REPORT,SHARDS_COUNTER_LOW")
+    equal(variablesOf(state.categories.DoTs), "TRACKER_PLATE_DOTS,TRACKER_PLATE_DOTS_OFFSET,"
+        .. "TRACKER_PLATE_DOTS_OPACITY,TRACKER_CURSE_MODE,RECAST_LEAD,RECAST_STYLE")
+    equal(variablesOf(state.categories["Damage Prediction"]):sub(1, 43),
+        "PREDICT_ENABLED,PREDICT_PLATES,PREDICT_DIES")
+    -- Switches that went: always on, merged into another, or moved to Edit Mode.
+    for _, gone in ipairs({"SHARDS_ENABLED_MAIN", "STONES_ENABLED", "STONES_GLOW", "REMIND_GLOW", "REMIND_ICONS",
+            "HOTBAR_PREP", "HOTBAR_STONES", "TRACKER_CURSE_MARKER", "THREAT_SOUNDS", "COOLDOWNS_SOUND",
+            "ALERTS_HOLD", "ALERTS_FADE", "PET_KEY_LABELS", "REMIND_ARMOR", "REMIND_DEMON", "PROCS_SOUND",
+            "PROCS_ICON", "RECAST_ENABLED", "STONES_REMIND_SOULSTONE", "STONES_REMIND_HEALTHSTONE"}) do
+        equal(state.settings["GRIMOIRE_" .. gone], nil, gone .. " is not a page setting")
     end
-    equal(table.concat(bars, ","), "HOTBAR_STONES,HOTBAR_ARMOR,HOTBAR_DEMON,HOTBAR_RECAST,HOTBAR_NIGHTFALL,"
-        .. "HOTBAR_PREP,STONES_MACROS,CONTROL_MACROS,FOCUS_MACROS,PREP_MACRO,PET_KEY_LABELS",
-        "glows, then macros, then the pet bar")
-    for _, gone in ipairs({"Shield", "Cooldown Chimes", "Demon Armor"}) do
-        equal(state.categories[gone], nil, "no page pointing to another AddOn: " .. gone)
-    end
-    equal(state.categories.Alerts.parent, main, "Grimoire's own Alerts page")
-    equal(page.initializers[1].setting.variable, "GRIMOIRE_SHARDS_AUTO_LIMIT")
-    equal(page.initializers[2].setting.variable, "GRIMOIRE_SHARDS_LIMIT")
-    equal(page.initializers[3].setting.variable, "GRIMOIRE_SHARDS_REPORT")
-    local slider = page.initializers[2].options
+    local slider = page.initializers[3].options
     equal(slider.minValue, 1)
     equal(slider.maxValue, 60)
     equal(slider.step, 1)
     equal(slider.label, "right")
+end)
+
+test("Cues: a row per thing Grimoire watches, a box per way it tells you", function()
+    local state = fixture()
+    local page = state.categories.Cues.frame
+    page:OnRefresh()
+    local rows = {}
+    for _, row in ipairs(page.rows) do
+        local cells = {}
+        for _, column in ipairs({"alert", "icon", "glow"}) do
+            if row.cells[column] then cells[#cells + 1] = column end
+        end
+        rows[#rows + 1] = row.key .. "=" .. table.concat(cells, "+")
+    end
+    equal(table.concat(rows, " "), "armor=alert+icon+glow demon=alert+icon+glow healthstone=alert+glow "
+        .. "soulstone=alert+glow shards=alert recast=icon+glow nightfall=alert+icon+glow")
+    -- Every box is on by default, shows its saved switch, and a click writes it.
+    local db = state.wtf.db
+    for _, row in ipairs(page.rows) do
+        for column, check in pairs(row.cells) do
+            equal(check.checked, true, row.key .. "." .. column .. " on by default")
+            equal(type(check.cell.tip), "string")
+        end
+    end
+    cue(state, "armor", "alert", false)
+    equal(db.reminders.armor, false)
+    equal(db.reminders.armorIcon, true, "the other boxes of the row stay")
+    equal(db.hotbar.armor, true)
+    cue(state, "healthstone", "glow", false)
+    equal(db.hotbar.healthstone, false)
+    equal(db.hotbar.soulstone, true, "a switch per stone")
+    cue(state, "shards", "alert", false)
+    equal(db.shards.lowAlert, false)
+    cue(state, "recast", "icon", false)
+    equal(db.recast.enabled, false)
+    cue(state, "nightfall", "icon", false)
+    equal(db.procs.icon, false)
+    page:OnRefresh()
+    equal(cue(state, "armor", "alert").checked, false, "shown as saved")
+    -- The panel's Defaults button: every box on again.
+    page:OnDefault()
+    equal(db.reminders.armor, true)
+    equal(db.hotbar.healthstone, true)
+    equal(db.shards.lowAlert, true)
+    equal(db.recast.enabled, true)
+    equal(cue(state, "nightfall", "icon").checked, true)
+end)
+
+test("Cues: 0.3's shared switches become one per output", function()
+    local state = fixture({db = {reminders = {icons = false, armor = false}, hotbar = {stones = false},
+        shards = {counter = false}}})
+    local db = state.wtf.db
+    equal(db.reminders.armorIcon, false, "the one icons switch was off")
+    equal(db.reminders.demonIcon, false)
+    equal(db.reminders.armor, false)
+    equal(db.reminders.icons, nil)
+    equal(db.hotbar.healthstone, false, "the one stones glow switch was off")
+    equal(db.hotbar.soulstone, false)
+    equal(db.hotbar.stones, nil)
+    equal(db.hotbar.prep, nil, "the prep macro always glows")
+    equal(db.shards.lowAlert, false, "the low line followed the counter")
+    equal(db.keyLabels, nil, "the pet bar's key labels left Grimoire")
+    local kept = fixture({db = {reminders = {icons = false, armorIcon = true}, shards = {counter = false,
+        lowAlert = true}}})
+    equal(kept.wtf.db.reminders.armorIcon, true, "a saved new switch wins")
+    equal(kept.wtf.db.shards.lowAlert, true)
 end)
 test("settings read and write the saved shard settings", function()
     local state = fixture()
@@ -5963,10 +6084,10 @@ test("settings read and write the saved shard settings", function()
 end)
 test("the limit slider shows the soul bag size and is disabled while matching it", function()
     local state = fixture({bags = soulBag(16)})
-    local page = state.categories["Shards and Stones"]
-    local slider = page.initializers[2]
+    local page = state.categories["Soul Shards"]
+    local slider = page.initializers[3]
     equal(state.settings.GRIMOIRE_SHARDS_LIMIT:GetValue(), 16)
-    equal(slider.parentInitializer, page.initializers[1])
+    equal(slider.parentInitializer, page.initializers[2])
     equal(slider.predicate(), false)
     state.settings.GRIMOIRE_SHARDS_LIMIT:SetValue(3)
     equal(state.wtf.GetShardLimit(), 16, "ignored while matching the soul bag")
@@ -5977,7 +6098,7 @@ test("turning off the soul bag match keeps the current limit as the manual one",
     equal(state.wtf.db.shards.autoLimit, false)
     equal(state.wtf.db.shards.limit, 16)
     equal(state.notified[#state.notified], "GRIMOIRE_SHARDS_LIMIT")
-    equal(state.categories["Shards and Stones"].initializers[2].predicate(), true)
+    equal(state.categories["Soul Shards"].initializers[3].predicate(), true)
     state.settings.GRIMOIRE_SHARDS_LIMIT:SetValue(9)
     equal(state.wtf.GetShardLimit(), 9)
 end)
@@ -6054,7 +6175,7 @@ test("prediction: with neither path nothing registers, and the settings are grey
     equal(targetOverlay(state), nil, "no block")
     for _, variable in ipairs({"GRIMOIRE_PREDICT_ENABLED", "GRIMOIRE_PREDICT_PLATES", "GRIMOIRE_PREDICT_DIES"}) do
         local initializer
-        for _, object in ipairs(state.categories.DoTs.initializers) do
+        for _, object in ipairs(state.categories["Damage Prediction"].initializers) do
             if object.setting.variable == variable then initializer = object end
         end
         equal(initializer.modifyPredicates[1](), false, variable .. " greyed")
@@ -6313,7 +6434,7 @@ test("prediction: the setting is named Show Predictive DoT Damage", function()
     equal(state.settings.GRIMOIRE_PREDICT_ENABLED.name, "Show Predictive DoT Damage")
     equal(state.settings.GRIMOIRE_PREDICT_TRACKER, nil, "no switch of its own for the tracker")
     local initializer
-    for _, object in ipairs(state.categories.DoTs.initializers) do
+    for _, object in ipairs(state.categories["Damage Prediction"].initializers) do
         if object.setting.variable == "GRIMOIRE_PREDICT_ENABLED" then initializer = object end
     end
     contains(initializer.tooltip, "Predictive DoT damage")
@@ -7163,7 +7284,7 @@ test("recast cue: an instant DoT is marked as it runs out, and stays until recas
     equal(state.cues(), "", "not due for ever")
     state.settings.GRIMOIRE_RECAST_LEAD:SetValue(99)
     equal(state.wtf.db.recast.lead, 20, "kept in range")
-    state.settings.GRIMOIRE_RECAST_ENABLED:SetValue(false)
+    cue(state, "recast", "icon", false)
     equal(state.cues(), "")
     equal(#state.marks(), 0)
 end)
@@ -7250,11 +7371,13 @@ test("action bars: a stone you can make glows on its bar button, also with the S
     state.settings.GRIMOIRE_STONES_SHOWN:SetValue(false)
     equal(glows(state), "ActionButton1,ActionButton2,ActionButton3", "the Stones bar hidden: the bars still glow")
     state.combat = true
-    state.settings.GRIMOIRE_HOTBAR_STONES:SetValue(false)
+    cue(state, "healthstone", "glow", false)
     state.combat = false
     state.emit("PLAYER_REGEN_ENABLED")
-    equal(glows(state), "", "its switch")
+    equal(glows(state), "ActionButton2,ActionButton3", "the Healthstone's switch; the Soulstone's buttons stay")
     equal(glow.shown, false)
+    cue(state, "soulstone", "glow", false)
+    equal(glows(state), "")
 end)
 test("action bars: a DoT due on your target glows; a focus macro glows for your focus", function()
     local state = recastFixture({actions = {[1] = {"spell", 6222}, [2] = {"macro", 2, nil, "! Corruption F"}}})
@@ -7291,6 +7414,40 @@ test("action bars: focus DoT macros for the DoTs you know, deleted when off", fu
     state.settings.GRIMOIRE_FOCUS_MACROS:SetValue(false)
     equal(named("! Corruption F"), nil, "off deletes them")
 end)
+test("action bars: \"! Fear F\" fears your focus; its button shows the F and never glows", function()
+    local state = stonesFixture({known = {[172] = true, [5782] = true},
+        actions = {[1] = {"macro", 1, nil, "! Fear F"}, [2] = {"spell", 5782}}})
+    local function named(name)
+        for _, macro in ipairs(state.macros) do
+            if macro.name == name then return macro end
+        end
+    end
+    equal(named("! Fear F"), nil, "off by default")
+    state.settings.GRIMOIRE_FOCUS_MACROS:SetValue(true)
+    equal(named("! Fear F").body, "#showtooltip Fear\n/cast [@focus,harm,nodead] Fear")
+    state.barsChanged()
+    equal(state.env.ActionButton1.grimoireFocusMark.shown, true, "an F on its button")
+    equal(state.env.ActionButton2.grimoireFocusMark, nil, "none on Fear itself")
+    equal(glows(state), "")
+    local unknown = stonesFixture({known = {[172] = true}, db = {hotbar = {focusMacros = true}}})
+    for _, macro in ipairs(unknown.macros) do
+        equal(macro.name == "! Fear F", false, "only once you know Fear")
+    end
+    state.settings.GRIMOIRE_FOCUS_MACROS:SetValue(false)
+    equal(named("! Fear F"), nil, "off deletes it")
+end)
+test("recast cue: the tracker's mark off keeps the glow on your action bars", function()
+    local state = recastFixture({actions = {[1] = {"spell", 6222}}})
+    state.barsChanged()
+    cue(state, "recast", "icon", false)
+    state.castDot(6222, "Corruption")
+    state.now = state.now + 12.6
+    state.recastTick()
+    equal(#state.marks(), 0, "no mark on the tracker")
+    equal(glows(state), "ActionButton1", "Corruption on the bar still glows")
+    cue(state, "recast", "glow", false)
+    equal(glows(state), "", "its own switch")
+end)
 
 test("recast cue: settings are repaired, on by default with a 0.5 s lead", function()
     local state = recastFixture({db = {tracker = {health = true}, recast = {enabled = "yes", lead = "soon"}}})
@@ -7299,7 +7456,8 @@ test("recast cue: settings are repaired, on by default with a 0.5 s lead", funct
     local off = recastFixture({db = {tracker = {health = true}, recast = {enabled = false, lead = 12}}})
     equal(off.wtf.db.recast.enabled, false)
     equal(off.wtf.db.recast.lead, 12)
-    equal(state.settings.GRIMOIRE_RECAST_ENABLED.name, "Mark a DoT when it is time to recast")
+    equal(cue(state, "recast", "icon").checked, true, "the tracker's mark, on the Cues page")
+    contains(cue(state, "recast", "icon").cell.tip, "DoT tracker pulses")
 end)
 
 -- Dyre's Toolkit's shared files and engines (WTF 1.4.1, 1.5.0) -------------------
@@ -7374,26 +7532,20 @@ test("smart curse: curseMode and curseMarker are repaired on load", function()
     equal(fresh.wtf.db.tracker.curseMarker, true)
     local kept = trackerFixture({db = {tracker = {curseMode = "smart", curseMarker = false}}})
     equal(kept.wtf.db.tracker.curseMode, "smart")
-    equal(kept.wtf.db.tracker.curseMarker, false)
+    equal(kept.wtf.db.tracker.curseMarker, true, "0.4.0: the letter always shows")
 end)
 
 test("smart curse: the Curse slot settings switch the pinned Curse slot's click", function()
     local state = trackerFixture()
     local page = state.categories.DoTs
     local mode = initializerFor(page, "GRIMOIRE_TRACKER_CURSE_MODE")
-    local marker = initializerFor(page, "GRIMOIRE_TRACKER_CURSE_MARKER")
     equal(mode.setting.name, "Curse slot click")
-    equal(marker.setting.name, "Show the smart curse letter")
-    equal(marker.parentInitializer, mode, "under the mode")
-    equal(marker.predicate(), false, "greyed with Last used")
+    contains(mode.tooltip, "a letter on the slot's icon")
     equal(#macroTextsWith(state, "[@target,harm,nodead,mod:shift] Curse of Weakness"), 0, "last used: no smart click")
     state.settings.GRIMOIRE_TRACKER_CURSE_MODE:SetValue("smart")
     equal(state.wtf.db.tracker.curseMode, "smart", "saved")
-    equal(marker.predicate(), true)
     equal(#macroTextsWith(state, "[@target,harm,nodead,mod:shift] Curse of Weakness") > 0, true,
         "the target row's Curse slot casts the smart curse")
-    state.settings.GRIMOIRE_TRACKER_CURSE_MARKER:SetValue(false)
-    equal(state.wtf.db.tracker.curseMarker, false, "saved")
     state.settings.GRIMOIRE_TRACKER_CURSE_MODE:SetValue("last")
     equal(#macroTextsWith(state, "[@target,harm,nodead,mod:shift] Curse of Weakness"), 0, "back to last used")
 end)
@@ -7545,12 +7697,16 @@ test("alerts: the window never takes the mouse, shows samples in Edit Mode, and 
     equal(alerts.enabled, true)
     equal(alerts.chat, false)
 end)
-test("alerts: lines, background and size are in the window's Edit Mode dialog, not on the page", function()
+test("alerts: lines, background, size, hold and fade times are in the window's Edit Mode dialog, not on the page", function()
     local state = fixture()
     local holder = state.env.GrimoireAlerts
     local names = {}
     for _, setting in ipairs(state.editModeEntry(holder).settings) do names[#names + 1] = setting.name end
-    equal(table.concat(names, ", "), "Lines, Background opacity, Size")
+    equal(table.concat(names, ", "), "Lines, Background opacity, Size, Hold time, Fade time")
+    state.look(holder, "Hold time", 12)
+    equal(state.wtf.db.alerts.hold, 12)
+    state.look(holder, "Fade time", 99)
+    equal(state.wtf.db.alerts.fade, state.wtf.ALERT_FADE_MAX, "kept in range")
     state.look(holder, "Lines", 5)
     equal(state.wtf.db.alerts.lines, 5)
     state.look(holder, "Lines", 99)
@@ -7559,11 +7715,11 @@ test("alerts: lines, background and size are in the window's Edit Mode dialog, n
     equal(state.wtf.db.alerts.background, 25)
     state.look(holder, "Size", 130)
     equal(holder:GetScale(), 1.3)
-    for _, initializer in ipairs(state.categories.Alerts.initializers) do
+    for _, initializer in ipairs(state.categories.Warnings.initializers) do
         local variable = initializer.setting.variable
         for _, gone in ipairs({"GRIMOIRE_ALERTS_LINES", "GRIMOIRE_ALERTS_BACKGROUND", "GRIMOIRE_ALERTS_SCALE",
-                "GRIMOIRE_SHIELD_NUMBER", "GRIMOIRE_REMIND_DEMON"}) do
-            equal(variable == gone, false, gone .. ": not on the Alerts page")
+                "GRIMOIRE_ALERTS_HOLD", "GRIMOIRE_ALERTS_FADE", "GRIMOIRE_SHIELD_NUMBER", "GRIMOIRE_REMIND_DEMON"}) do
+            equal(variable == gone, false, gone .. ": not on the Warnings page")
         end
     end
 end)
@@ -7635,7 +7791,7 @@ test("prep strip: a member switched off gives up its slot, out of combat", funct
     equal(state.env[SOUL].shown, true)
     _, x = stripSlot(state, state.wtf.shardCounter)
     equal(x, 6 + 2 * 42)
-    equal(initializerFor(state.categories["Shards and Stones"], "GRIMOIRE_STRIP_ENABLED").setting.default, false)
+    equal(initializerFor(state.categories["Grimoire"], "GRIMOIRE_STRIP_ENABLED").setting.default, false)
 end)
 test("prep strip: an empty slot shows, fades, or closes up; Nightfall keeps its slot", function()
     local state = stonesFixture({db = {strip = {enabled = true}},
@@ -7692,7 +7848,7 @@ test("reminders: a missing Demon Skin shows its icon and a line; a click casts i
     equal(button.attributes.type, "spell")
     equal(button.attributes.spell, "Demon Skin")
     local lines = alertsFrom(state, "armor")
-    equal(lines[#lines].text, "Demon Skin missing. Click the icon.")
+    equal(lines[#lines].text, "Demon Skin missing.")
     -- Cast and up: the icon goes, and a line comes a minute before it ends.
     state.buffs = {["Demon Skin"] = {name = "Demon Skin", spellId = 687, expirationTime = state.now + 600}}
     state.emit("UNIT_AURA", "player")
@@ -7711,10 +7867,19 @@ test("reminders: the icons can be hidden; a missing armor still glows on your ac
     local armor = state.env.GrimoireReminderArmor
     equal(armor.shown, true)
     equal(table.concat(state.wtf.HotbarGlows(), ","), "ActionButton1", "Demon Skin on the bar glows")
-    state.settings.GRIMOIRE_REMIND_ICONS:SetValue(false)
+    cue(state, "armor", "icon", false)
+    cue(state, "armor", "alert", false)
     settle(state)
     equal(armor.shown, false, "no icon")
     equal(table.concat(state.wtf.HotbarGlows(), ","), "ActionButton1", "the bar still glows")
+    -- The other way round: the icon and no glow on the bars.
+    cue(state, "armor", "icon", true)
+    cue(state, "armor", "glow", false)
+    settle(state)
+    equal(armor.shown, true)
+    equal(table.concat(state.wtf.HotbarGlows(), ","), "", "its glow's own switch")
+    cue(state, "armor", "glow", true)
+    settle(state)
     state.buffs = {["Demon Skin"] = {name = "Demon Skin", spellId = 687, expirationTime = state.now + 600}}
     state.emit("UNIT_AURA", "player")
     settle(state)
@@ -7754,10 +7919,6 @@ test("reminders: the icons glow while they show for real, not as Edit Mode's sam
     state.editMode(false)
     settle(state)
     equal(armor.glow.shown, true)
-    state.settings.GRIMOIRE_REMIND_GLOW:SetValue(false)
-    settle(state)
-    equal(armor.glow.shown, false, "its switch")
-    state.settings.GRIMOIRE_REMIND_GLOW:SetValue(true)
     state.buffs = {["Demon Skin"] = {name = "Demon Skin", spellId = 687, expirationTime = state.now + 600}}
     state.emit("UNIT_AURA", "player")
     settle(state)
@@ -7812,12 +7973,20 @@ test("reminders: no lines in the first seconds after login, while the demon and 
     equal(#alertsFrom(state, "demon"), 1)
 end)
 
-test("reminders: Demon Armor wins over Demon Skin, and the reminder can be turned off", function()
+test("reminders: Demon Armor wins over Demon Skin; the alert off keeps the icon, and the icon off keeps the alert", function()
     local state = reminderFixture({spellbook = {{spellID = 687, name = "Demon Skin"}, {spellID = 706, name = "Demon Armor"}}})
     equal(state.env.GrimoireReminderArmor.attributes.spell, "Demon Armor")
-    local off = reminderFixture({db = {reminders = {armor = false}}})
-    equal(off.env.GrimoireReminderArmor.shown, false)
-    equal(#alertsFrom(off, "armor"), 0)
+    local quiet = reminderFixture({db = {reminders = {armor = false, demon = false}}})
+    quiet.now = quiet.now + 12
+    settle(quiet)
+    equal(quiet.env.GrimoireReminderArmor.shown, true, "the armor is still watched: its icon shows")
+    equal(#alertsFrom(quiet, "armor"), 0, "no line")
+    equal(#alertsFrom(quiet, "demon"), 0)
+    local plain = reminderFixture({db = {reminders = {armorIcon = false}}})
+    plain.now = plain.now + 12
+    settle(plain)
+    equal(plain.env.GrimoireReminderArmor.shown, false, "no icon")
+    equal(#alertsFrom(plain, "armor"), 1, "the line still comes")
 end)
 
 test("reminders: the demon icon follows the game's pet driver and summons your last demon", function()
@@ -7826,7 +7995,7 @@ test("reminders: the demon icon follows the game's pet driver and summons your l
     equal(state.drivers[button], "[mounted] hide; [nopet] show; [@pet,dead] show; hide")
     equal(button.attributes.spell, "Summon Imp", "the Imp before any summon")
     local lines = alertsFrom(state, "demon")
-    equal(lines[#lines].text, "No demon out. Click the icon to summon.")
+    equal(lines[#lines].text, "No demon out.")
     state.emit("UNIT_SPELLCAST_SUCCEEDED", "player", "cast-vw", 697)
     settle(state)
     equal(state.wtf.db.reminders.lastDemon, "Summon Voidwalker")
@@ -8127,7 +8296,7 @@ test("Nightfall: the game plays the Imp chirp for Shadow Trance; the icon's slot
     equal(slot.key, "nightfall")
     equal(slot.ids[17941], true)
     -- Sounds off: unregistered.
-    state.settings.GRIMOIRE_PROCS_SOUND:SetValue(false)
+    cue(state, "nightfall", "alert", false)
     local left = 0
     for _ in pairs(state.auraSounds) do left = left + 1 end
     equal(left, 0)
@@ -8154,7 +8323,7 @@ test("Nightfall: a Forever buff ID is learned out of combat; an encounter delays
     for _, sound in pairs(state.auraSounds) do ids[sound.info.spellID] = true end
     equal(ids[99001], true, "the learned ID gets the sound too")
     state.encounter = true
-    state.settings.GRIMOIRE_PROCS_SOUND:SetValue(false)
+    cue(state, "nightfall", "alert", false)
     local count = 0
     for _ in pairs(state.auraSounds) do count = count + 1 end
     equal(count > 0, true, "no change during the encounter")
@@ -8301,82 +8470,6 @@ test("shield: four sides and flat rows from its Edit Mode dialog; 0.2's mirror b
     local point = placed.wtf.ShieldDisplay.frame.points[#placed.wtf.ShieldDisplay.frame.points]
     equal(point[4], 0, "an unplaced display above you starts over your head")
     equal(point[5], 70)
-end)
-
-test("key labels: the pet bar's labels keep their size when Edit Mode scales its buttons", function()
-    -- A label as the client's FontString: font, anchors, justification, size.
-    local function label(points, justify, width, height)
-        local region = {font = "Fonts\\ARIALN.TTF", fontSize = 12, fontFlags = "OUTLINE", points = points or {},
-            justify = justify, width = width, height = height}
-        function region:GetFont() return self.font, self.fontSize, self.fontFlags end
-        function region:SetFont(font, size, flags) self.font, self.fontSize, self.fontFlags = font, size, flags end
-        function region:GetNumPoints() return #self.points end
-        function region:GetPoint(index) return unpack(self.points[index]) end
-        function region:ClearAllPoints() self.points = {} end
-        function region:SetPoint(...) self.points[#self.points + 1] = {...} end
-        function region:GetJustifyH() return self.justify end
-        function region:SetJustifyH(value) self.justify = value end
-        function region:GetWidth() return self.width end
-        function region:GetHeight() return self.height end
-        function region:SetSize(w, h) self.width, self.height = w, h end
-        return region
-    end
-    local scale = 1.5
-    local globals = {NUM_PET_ACTION_SLOTS = 10}
-    for index = 1, 10 do
-        local button = {GetEffectiveScale = function() return scale end}
-        -- The pet template's own spot: one anchor, centered, its own size.
-        button.HotKey = label({{"TOP", button, "TOP", 0, -2}}, "CENTER", 36, 10)
-        globals["PetActionButton" .. index] = button
-    end
-    -- The action bars' spot: across the top, right-justified.
-    local action = {GetEffectiveScale = function() return 1.3 end}
-    action.HotKey = label({{"TOPLEFT", action, "TOPLEFT", -2, -3}, {"TOPRIGHT", action, "TOPRIGHT", -1, -3}}, "RIGHT")
-    globals.ActionButton1 = action
-    local state = fixture({globals = globals})
-    local pet = state.env.PetActionButton1
-    local hotkey = pet.HotKey
-    equal(state.wtf.db.keyLabels.petNormal, true, "on by default")
-    equal(hotkey.fontSize, 12 / 1.5, "a 150% pet bar keeps 100% labels")
-    equal(hotkey.font, "Fonts\\ARIALN.TTF")
-    equal(hotkey.fontFlags, "OUTLINE")
-    equal(state.env.PetActionButton10.HotKey.fontSize, 12 / 1.5)
-    equal(#hotkey.points, 2, "the action bars' two anchors")
-    equal(hotkey.points[1][1], "TOPLEFT")
-    equal(hotkey.points[1][2], pet, "on the pet button, not the action button")
-    equal(hotkey.points[2][1], "TOPRIGHT")
-    equal(hotkey.points[2][4], -1 / 1.5, "offsets at 100% too")
-    equal(hotkey.points[2][5], -3 / 1.5)
-    equal(hotkey.justify, "RIGHT")
-    scale = 2
-    state.emit("EDIT_MODE_LAYOUTS_UPDATED")
-    equal(hotkey.fontSize, 12 / 2, "follows a new size from the client's size, not its own last change")
-    equal(hotkey.points[2][4], -1 / 2)
-    -- In combat only the font follows; the anchors wait for its end.
-    state.combat = true
-    scale = 1.5
-    state.emit("EDIT_MODE_LAYOUTS_UPDATED")
-    equal(hotkey.fontSize, 12 / 1.5)
-    equal(hotkey.points[2][4], -1 / 2, "anchors wait in combat")
-    state.combat = false
-    state.emit("PLAYER_REGEN_ENABLED")
-    equal(hotkey.points[2][4], -1 / 1.5, "and follow when it ends")
-    state.wtf.db.keyLabels.petNormal = false
-    state.wtf.RefreshKeyLabels()
-    equal(hotkey.fontSize, 12, "off: the client's own size again")
-    equal(#hotkey.points, 1, "and its own spot")
-    equal(hotkey.points[1][1], "TOP")
-    equal(hotkey.points[1][2], pet)
-    equal(hotkey.justify, "CENTER")
-    equal(hotkey.width, 36)
-    equal(state.wtf.SanitizeKeyLabels({petNormal = false}).petNormal, false)
-end)
-
-test("key labels: no pet bar in the client is no error", function()
-    local state = fixture()
-    state.wtf.RefreshKeyLabels()
-    state.emit("PET_BAR_UPDATE")
-    equal(state.wtf.db.keyLabels.petNormal, true)
 end)
 
 test("tracker: Compact and smaller by default; WTF's untouched defaults move once, a choice stays", function()
@@ -8775,7 +8868,7 @@ end)
 -- function that talks to other players. The Healthstone trade (the user's
 -- own click) is the one allowed path, in Stones.lua only.
 test("source scan: no chat, emote, or addon-message call anywhere; trade calls only in Stones.lua", function()
-    local files = {"Alerts.lua", "Commands.lua", "Control.lua", "Cooldowns.lua", "Core.lua", "Dots.lua", "KeyLabels.lua",
+    local files = {"Alerts.lua", "Commands.lua", "Control.lua", "Cooldowns.lua", "Core.lua", "Dots.lua",
         "EditMode.lua", "Glow.lua", "Options.lua", "Pet.lua", "Predict.lua", "Probe.lua", "Procs.lua", "Reminders.lua", "Shards.lua",
         "Shield.lua", "Stones.lua", "Threat.lua", "Tracker.lua", "Engine/Announce.lua", "Engine/Auras.lua",
         "Engine/ClassData.lua", "Engine/Control.lua", "Engine/DotPredict.lua", "Engine/DotTracker.lua",

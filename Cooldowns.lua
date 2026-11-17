@@ -33,7 +33,7 @@ function WTF.SanitizeCooldowns(saved)
     saved = type(saved) == "table" and saved or {}
     local spells = type(saved.spells) == "table" and saved.spells or {}
     local learned = type(saved.learned) == "table" and saved.learned or {}
-    local clean = {enabled = saved.enabled ~= false, sound = saved.sound ~= false, spells = {}, learned = {}}
+    local clean = {enabled = saved.enabled ~= false, spells = {}, learned = {}}
     for _, def in ipairs(SPELLS) do
         if type(spells[def.key]) == "boolean" then
             clean.spells[def.key] = spells[def.key]
@@ -70,7 +70,7 @@ local function Schedule(def, readyAt)
         local settings = WTF.db.cooldowns
         if settings.enabled and settings.spells[def.key] then
             WTF.Alert("cooldown:" .. def.key, def.label .. " ready.", "info",
-                {throttle = 1, sound = settings.sound and SOUND or nil})
+                {throttle = 1, sound = SOUND})
         end
     end)
 end

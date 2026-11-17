@@ -23,7 +23,7 @@ The code's namespace table is called `WTF` (the second value of `...` in each fi
 | `Libs\LibEditMode\` | LibEditMode (p3lim), unmodified, loaded into Grimoire's namespace by its `namespaced.lua`, so no other addon's copy is involved; Forever and retail only |
 | `EditMode.lua` | registers every frame with Edit Mode (name, default place, dialog settings), shows the samples while Edit Mode is open, snaps a dropped frame (grid, screen, other frames) before LibEditMode saves it, scales a frame around its center |
 | `Glow.lua` | the pulsing gold glow on buttons that want a click (stones, reminder icons), from the `Textures\Glow*.tga` pieces |
-| `Hotbar.lua` | glows on the player's own action bar buttons: which button holds what (read out of combat), wants from Stones, Reminders and Recast, the Nightfall glow on Shadow Bolt through the aura engine, and the optional focus DoT macros |
+| `Hotbar.lua` | glows on the player's own action bar buttons: which button holds what (read out of combat), wants from Stones, Reminders and Recast, the Nightfall glow on Shadow Bolt through the aura engine, and the optional focus macros (DoTs and Fear) |
 | `Strip.lua` | the optional prep strip: the Stones buttons, the shard counter and the reminder icons reparented into one Edit Mode frame, laid out out of combat; on or off at login |
 | `Shards.lua` | Soul Shard deletion and the counter |
 | `Stones.lua` | Stones bar, stone macros, stone reminders, Healthstone trade |
@@ -34,11 +34,10 @@ The code's namespace table is called `WTF` (the second value of `...` in each fi
 | `Pet.lua` | demon died, Enslave broke, pet taunt on autocast |
 | `Procs.lua` | Nightfall sound and icon |
 | `Cooldowns.lua` | cooldown-ready lines timed from your casts |
-| `KeyLabels.lua` | pet bar key label size and place |
 | `Shield.lua` | shield display (from Dyre's Shields Up): the absorb and timed shields as arcs on one of four sides, or flat rows |
 | `scripts\build_shield_art.py` | draws the shield's arc textures (`Textures\ShieldRing*.tga`); not shipped |
 | `Probe.lua` | `/grim debug_restrictions`, `/grim debug_checks`, and the background diagnostics |
-| `Options.lua` | settings pages |
+| `Options.lua` | settings pages: the main page (frames, macros), the Cues grid (`WTF.CUES`: a row per thing watched, a saved switch per output), Warnings, Soul Shards, DoTs, Damage Prediction, DoT Order and Colors, Diagnostics |
 | `Bindings.xml` | the Smart curse key binding |
 | `tests\run.lua` | the mock client and every test |
 

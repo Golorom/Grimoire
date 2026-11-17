@@ -487,7 +487,7 @@ local function OnBagsChanged()
     end
     WTF.RefreshShardCounter()
     -- Grimoire: spending down to the low mark (the counter's red) says so.
-    if change < 0 and WTF.db.shards.counter and count <= WTF.db.shards.counterLow then
+    if change < 0 and WTF.db.shards.lowAlert and count <= WTF.db.shards.counterLow then
         WTF.Alert("shards:low", count == 0 and "Out of Soul Shards." or ("Low on Soul Shards: " .. count .. " left."),
             "warn", {throttle = 20})
     end

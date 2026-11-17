@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.4.0 (2026-11-17)
+
+Added
+- Cues settings page. A row for each thing Grimoire watches and a box for each way it tells you: an alert, an icon, a glow on your action bars. Rows: armor, demon, Healthstone, Soulstone, few Soul Shards, DoT to recast, Nightfall.
+- `! Fear F` macro, with the focus macros: fears your focus.
+- Hold time and fade time in the alert window's Edit Mode dialog.
+
+Changed
+- Settings pages: Grimoire (frames and macros), Cues, Warnings, Soul Shards, DoTs, Damage Prediction, DoT Order and Colors, Diagnostics. Each switch is on one page only.
+- Armor, demon and stones are always watched. Turning off one output keeps the others.
+- Separate glow switches for Healthstone and Soulstone, and separate icon switches for armor and demon.
+- One switch for the Stones bar.
+- Reminder lines are shorter.
+
+Removed
+- Switches for the reminder icon glow, the Stones bar glow, the prep macro glow and the smart curse letter. These are always on.
+- Separate threat and cooldown sound switches. The alert sounds switch covers them.
+- Pet bar key labels. Hotbar Highlight 1.1.0 does this, for the stance bar too.
+
 ## 0.3.9 (2026-11-17)
 
 Changed

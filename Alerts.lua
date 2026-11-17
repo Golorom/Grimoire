@@ -23,7 +23,7 @@ local THROTTLE = 10
 local HISTORY = 20
 local COLORS = {info = {1, 1, 1}, warn = {1, 0.82, 0}, danger = {1, 0.25, 0.25}}
 local SAMPLES = {
-    {"Sample: Demon Skin missing. Click the icon.", "warn"},
+    {"Sample: Demon Skin missing.", "warn"},
     {"Sample: Aggro! Wendigo is on you.", "danger"},
     {"Sample: Death Coil ready.", "info"},
 }
@@ -250,10 +250,10 @@ function WTF.TestAlerts()
     WTF.ResetAlert("test:warn")
     WTF.ResetAlert("test:danger")
     WTF.Alert("test:info", "Test: Death Coil ready.", "info")
-    WTF.Alert("test:warn", "Test: Demon Skin missing. Click the icon.", "warn")
+    WTF.Alert("test:warn", "Test: Demon Skin missing.", "warn")
     WTF.Alert("test:danger", "Test: Aggro! Wendigo is on you.", "danger", {sound = "RAID_WARNING"})
     if not WTF.db.alerts.enabled then
-        WTF.Report("The alert window is off (Alerts page), so these went to chat.")
+        WTF.Report("The alert window is off (Warnings page), so these went to chat.")
     end
 end
 
@@ -291,6 +291,17 @@ local function AddEditModeSettings()
                 end, desc = "A dark panel behind the lines, in percent. 0 shows the text alone."},
             WTF.EditModeSizeSetting(kinds, Saved("scale"), WTF.SetAlertsScale,
                 "How big the alert text is, in percent."),
+            -- 0.4.0: how long a line stays and fades (was on the Alerts page).
+            {kind = kinds.Slider, name = "Hold time", default = WTF.DEFAULT_ALERT_HOLD,
+                minValue = WTF.ALERT_HOLD_MIN, maxValue = WTF.ALERT_HOLD_MAX, valueStep = 1, get = Saved("hold"),
+                set = function(_, value)
+                    SetLook("hold", value, WTF.ALERT_HOLD_MIN, WTF.ALERT_HOLD_MAX, WTF.DEFAULT_ALERT_HOLD)
+                end, desc = "How many seconds a line stays before it fades."},
+            {kind = kinds.Slider, name = "Fade time", default = WTF.DEFAULT_ALERT_FADE,
+                minValue = WTF.ALERT_FADE_MIN, maxValue = WTF.ALERT_FADE_MAX, valueStep = 1, get = Saved("fade"),
+                set = function(_, value)
+                    SetLook("fade", value, WTF.ALERT_FADE_MIN, WTF.ALERT_FADE_MAX, WTF.DEFAULT_ALERT_FADE)
+                end, desc = "How many seconds a line takes to fade out."},
         }
     end)
 end

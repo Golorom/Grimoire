@@ -383,7 +383,7 @@ local function UpdateVisibility()
     if WTF.StripActive() then
         buttons.bar:Hide()
         WTF.RefreshStrip()
-    elseif settings.enabled and settings.shown then
+    elseif settings.shown then
         buttons.bar:Show()
     else
         buttons.bar:Hide()
@@ -791,7 +791,7 @@ UpdateGlow = function()
         return
     end
     local settings = WTF.db.stones
-    local shard = settings.enabled and Shards() > 0
+    local shard = Shards() > 0
     local soulRank, healthRank = BestKnownRank(SOULSTONES), BestKnownRank(HEALTHSTONES)
     local soul = shard and soulRank ~= nil and CountCarried(SOULSTONES) == 0 and not SoulstoneUp()
     if soul then
@@ -807,7 +807,8 @@ UpdateGlow = function()
         WTF.SetPrepStep("healthstone", health and CastName(healthRank.spell) or nil)
         WTF.SetPrepStep("soulstone", soul and C_Spell.GetSpellName(soulRank.spell) or nil)
     end
-    local on = settings.shown and settings.glow
+    -- 0.4.0: the bar's buttons always glow for it while the bar shows.
+    local on = settings.shown
     soul, health = on and soul, on and health
     stones.glowing = {soulstone = soul == true, healthstone = health == true}
     WTF.SetGlow(buttons.soulstone.glow, soul)
@@ -855,16 +856,16 @@ end
 
 function WTF.RemindStones()
     local settings = WTF.db.stones
-    if not settings.enabled or WTF.QuietTime() then
+    if WTF.QuietTime() then
         return
     end
     if settings.remindSoulstone and BestKnownRank(SOULSTONES) and not SoulstoneUp() then
         Remind("soulstone", CountCarried(SOULSTONES) > 0
-            and "No Soulstone up. Left-click the Soulstone button."
-            or "No Soulstone. Right-click the Soulstone button to make one.")
+            and "No Soulstone up."
+            or "No Soulstone. You can make one.")
     end
     if settings.remindHealthstone and BestKnownRank(HEALTHSTONES) and CountCarried(HEALTHSTONES) == 0 then
-        Remind("healthstone", "No Healthstone. Right-click the Healthstone button to make one.")
+        Remind("healthstone", "No Healthstone.")
     end
 end
 
@@ -875,7 +876,7 @@ local function OnSoulstoneEnd()
     end
     WTF.db.stones.soulstone = nil
     UpdateGlow()
-    if WTF.db.stones.enabled and WTF.db.stones.remindSoulstone then
+    if WTF.db.stones.remindSoulstone then
         WTF.Alert("soulstone:ended", "Soulstone on " .. soulstone.name .. " ended.", "warn", {throttle = 0})
         status.reminded.soulstone = nil
         WTF.RemindStones()
@@ -996,7 +997,7 @@ function WTF.InitializeStones()
     if WTF.StripActive() then
         -- 0.3.5: the buttons go into the prep strip (Strip.lua), first.
         local function Wanted()
-            return WTF.db.stones.enabled and WTF.db.stones.shown
+            return WTF.db.stones.shown
         end
         bar:Hide()
         WTF.JoinStrip(buttons.soulstone, 1, Wanted, true)
@@ -1069,7 +1070,7 @@ function WTF.ReportStoneDebug()
         WTF.Report(string.format("debug_stones macro %q index=%d", name, GetMacroIndexByName(name)))
     end
     local glowing = stones.glowing or {}
-    WTF.Report(string.format("debug_stones glow setting=%s soulstone=%s healthstone=%s soulCooling=%s look=%s %d %s",
-        tostring(WTF.db.stones.glow), tostring(glowing.soulstone), tostring(glowing.healthstone),
+    WTF.Report(string.format("debug_stones glow bar=%s soulstone=%s healthstone=%s soulCooling=%s look=%s %d %s",
+        tostring(WTF.db.stones.shown), tostring(glowing.soulstone), tostring(glowing.healthstone),
         tostring(stones.soulCooling), WTF.db.stones.layout, WTF.db.stones.spacing, tostring(WTF.db.stones.background)))
 end

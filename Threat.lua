@@ -44,7 +44,6 @@ function WTF.SanitizeThreat(saved)
     return {
         enabled = saved.enabled ~= false,
         risk = saved.risk ~= false,
-        sounds = saved.sounds ~= false,
         riskAt = WTF.SanitizeWhole(saved.riskAt, WTF.THREAT_RISK_MIN, WTF.THREAT_RISK_MAX, WTF.DEFAULT_THREAT_RISK),
         petLost = saved.petLost ~= false,
     }
@@ -108,7 +107,7 @@ local function CheckPet(unit, mob, key, status)
             local name = MobName(unit)
             Log("lost " .. name)
             WTF.Alert("threat:lost:" .. key, "Your demon lost " .. name .. ".", "warn",
-                {throttle = REPEAT, sound = Grouped() and settings.sounds and RISK_SOUND or nil})
+                {throttle = REPEAT, sound = Grouped() and RISK_SOUND or nil})
         end
     end
 end
@@ -145,7 +144,7 @@ local function Check(unit)
             local name = MobName(unit)
             Log("risk " .. name .. " " .. math.floor(percent) .. "%")
             WTF.Alert("threat:risk:" .. key, "Careful: " .. math.floor(percent) .. "% threat on " .. name .. ".", "warn",
-                {throttle = REPEAT, sound = settings.sounds and RISK_SOUND or nil})
+                {throttle = REPEAT, sound = RISK_SOUND})
         end
     end
     local before = mob.status
@@ -171,7 +170,7 @@ local function Check(unit)
             mob.aggroAt = now
             Log("aggro " .. name)
             WTF.Alert("threat:aggro:" .. key, "Aggro! " .. name .. " is on you.", grouped and "danger" or "warn",
-                {throttle = REPEAT, sound = grouped and settings.sounds and AGGRO_SOUND or nil})
+                {throttle = REPEAT, sound = grouped and AGGRO_SOUND or nil})
         end
     elseif status == 1 and before == 0 and settings.risk and grouped and not mob.percentRead and not mob.riskSent then
         if not mob.riskAt or now - mob.riskAt > REPEAT then
@@ -179,7 +178,7 @@ local function Check(unit)
             mob.riskSent = true
             Log("risk " .. name)
             WTF.Alert("threat:risk:" .. key, "Careful: about to pull " .. name .. ".", "warn",
-                {throttle = REPEAT, sound = settings.sounds and RISK_SOUND or nil})
+                {throttle = REPEAT, sound = RISK_SOUND})
         end
     end
 end

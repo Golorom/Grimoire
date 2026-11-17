@@ -24,9 +24,10 @@ local BUTTONS_PER_BAR = 12
 local MAP_DELAY = 0.2
 local SHADOW_BOLT = 686
 local NIGHTFALL_GLOWS = 6
--- Which switch each kind of want belongs to.
-local SWITCH = {healthstone = "stones", soulstone = "stones", armor = "armor", summon = "demon", dot = "recast",
-    focus = "recast", prep = "prep"}
+-- Which switch each kind of want belongs to. The prep macro always glows
+-- while it has a step (0.4.0).
+local SWITCH = {healthstone = "healthstone", soulstone = "soulstone", armor = "armor", summon = "demon",
+    dot = "recast", focus = "recast"}
 local MAP_JOB = {}
 
 local hotbar = {keysOf = {}, wants = {}, glowing = {}, proxies = {}}
@@ -34,8 +35,16 @@ local hotbar = {keysOf = {}, wants = {}, glowing = {}, proxies = {}}
 function WTF.SanitizeHotbar(saved)
     saved = type(saved) == "table" and saved or {}
     local clean = {}
-    for _, key in ipairs({"stones", "armor", "demon", "recast", "nightfall", "prep"}) do
+    for _, key in ipairs({"armor", "demon", "recast", "nightfall"}) do
         clean[key] = saved[key] ~= false
+    end
+    -- 0.4.0: a switch per stone (0.3.6 had one for both, "stones").
+    for _, key in ipairs({"healthstone", "soulstone"}) do
+        if type(saved[key]) == "boolean" then
+            clean[key] = saved[key]
+        else
+            clean[key] = saved.stones ~= false
+        end
     end
     clean.focusMacros = saved.focusMacros == true
     clean.prepMacro = saved.prepMacro == true
@@ -315,15 +324,17 @@ function WTF.ReportHotbarDebug()
         #(hotbar.bolts or {}), table.concat(wants, ","), table.concat(WTF.HotbarGlows(), ",")))
 end
 
--- Focus DoT macros (0.3.6, a choice, off by default): "! Corruption F" and
--- the others cast that DoT on your focus, for the DoTs you know. Their
--- buttons glow when your focus needs that DoT again. Out of combat; off
--- deletes them.
+-- Focus macros (0.3.6, a choice, off by default): "! Corruption F" and the
+-- others cast that spell on your focus, for the spells you know. A DoT's
+-- button glows when your focus needs that DoT again. Out of combat; off
+-- deletes them. 0.4.0: "! Fear F" fears your focus (no glow).
+local FEAR_IDS = {5782, 6213, 6215}
 local FOCUS_MACROS = {
     {family = "corruption", slot = "corruption", name = "! Corruption F"},
     {family = "immolate", slot = "immolate", name = "! Immolate F"},
     {family = "agony", slot = "bane", name = "! Agony F"},
     {family = "siphon", slot = "siphon", name = "! Siphon F"},
+    {family = "fear", ids = FEAR_IDS, cast = FEAR_IDS[1], name = "! Fear F"},
 }
 WTF.FOCUS_MACROS = FOCUS_MACROS
 
@@ -355,7 +366,8 @@ local function WriteFocusMacros()
         return
     end
     for _, def in ipairs(FOCUS_MACROS) do
-        local slot = DotSlot(def.slot)
+        -- A DoT's ranks come from its tracker slot; Fear carries its own.
+        local slot = def.ids and def or DotSlot(def.slot)
         local known = slot and WTF.shared.KnowsAny(slot.ids)
         local spell = known and SpellName(slot.cast)
         if WTF.db.hotbar.focusMacros and spell then

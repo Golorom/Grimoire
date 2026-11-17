@@ -146,7 +146,6 @@ local REQUIRED_NAMESPACE = {
     "SanitizeProcs", "InitializeProcs", "RefreshProcs", "ResetProcsPosition",
     "SanitizeRecast", "InitializeRecast", "RefreshRecast", "RecastCues", "ReportRecastDebug",
     "SanitizeCooldowns", "InitializeCooldowns",
-    "SanitizeKeyLabels", "InitializeKeyLabels", "RefreshKeyLabels",
 }
 
 local function CheckInstalledFiles()
@@ -471,6 +470,14 @@ function WTF.SanitizeTrackerSizes(theme, saved)
     return sizes
 end
 
+-- A saved switch, else the older switch it came from, else on.
+local function OrOlder(value, older)
+    if type(value) == "boolean" then
+        return value
+    end
+    return older ~= false
+end
+
 function WTF.SanitizeDB(db)
     if type(db) ~= "table" then
         db = {}
@@ -484,6 +491,8 @@ function WTF.SanitizeDB(db)
         report = shards.report == true,
         counter = shards.counter ~= false,
         counterLow = WTF.SanitizeShardLow(shards.counterLow),
+        -- 0.4.0: the low shard line has its own switch (it followed the counter's).
+        lowAlert = OrOlder(shards.lowAlert, shards.counter),
         counterPosition = SanitizePosition(shards.counterPosition),
         counterScale = WTF.SanitizeFrameScale(shards.counterScale),
         instanceKeep = WTF.SanitizeInstanceKeep(shards.instanceKeep),
@@ -491,14 +500,14 @@ function WTF.SanitizeDB(db)
     local stones = type(db.stones) == "table" and db.stones or {}
     local soulstone = type(stones.soulstone) == "table" and stones.soulstone or nil
     db.stones = {
-        enabled = stones.enabled ~= false,
-        shown = stones.shown ~= false,
+        -- 0.4.0: one switch for the bar (0.3 had "enabled" over "shown");
+        -- the stones themselves are always watched.
+        shown = stones.enabled ~= false and stones.shown ~= false,
         position = SanitizePosition(stones.position),
         scale = WTF.SanitizeFrameScale(stones.scale),
         macros = stones.macros ~= false,
         remindSoulstone = stones.remindSoulstone ~= false,
         remindHealthstone = stones.remindHealthstone ~= false,
-        glow = stones.glow ~= false,
         soulstone = soulstone and type(soulstone.name) == "string" and type(soulstone.ends) == "number"
             and {name = soulstone.name, ends = soulstone.ends} or nil,
     }
@@ -530,10 +539,10 @@ function WTF.SanitizeDB(db)
         panelColors = {},
         order = WTF.SanitizeDotOrder(tracker.order),
         -- The smart curse (Toolkit 2.7.0): the pinned Curse slot recasts the
-        -- last curse ("last", default) or the smart pick ("smart"); its letter
-        -- shows unless false.
+        -- last curse ("last", default) or the smart pick ("smart"). 0.4.0:
+        -- its letter always shows (the engine reads curseMarker).
         curseMode = tracker.curseMode == "smart" and "smart" or "last",
-        curseMarker = tracker.curseMarker ~= false,
+        curseMarker = true,
         -- 0.3.5: Dyre's look ("dyre", default) or a gold border on each row ("gold").
         style = WTF.SanitizeChoice(tracker.style, WTF.FRAME_STYLES, "dyre"),
     }
@@ -625,9 +634,8 @@ function WTF.SanitizeDB(db)
         db.cooldowns = WTF.SanitizeCooldowns(db.cooldowns)
         db.shield = WTF.ShieldDisplay.Sanitize(db.shield)
     end
-    if WTF.SanitizeKeyLabels then
-        db.keyLabels = WTF.SanitizeKeyLabels(db.keyLabels)
-    end
+    -- 0.4.0: the pet bar's key labels are Hotbar Highlight's job now.
+    db.keyLabels = nil
     if WTF.SanitizeDiagnostics then
         db.diagnostics = WTF.SanitizeDiagnostics(db.diagnostics)
     end
@@ -970,7 +978,6 @@ events:SetScript("OnEvent", function(self, event, loadedName)
     Start("Threat warning", WTF.InitializeThreat)
     Start("Demon warnings", WTF.InitializePet)
     Start("Cooldown alerts", WTF.InitializeCooldowns)
-    Start("Key labels", WTF.InitializeKeyLabels)
     Start("Shield display", function()
         local place = WTF.ShieldDisplay.DEFAULT_PLACE
         WTF.ShieldDisplay.Initialize({settings = function() return WTF.db.shield end, report = WTF.Report,

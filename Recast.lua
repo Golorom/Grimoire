@@ -226,7 +226,9 @@ local function HotbarWants(predictor, now)
     if not WTF.SetHotbarGroup then
         return
     end
-    if WTF.db.recast.enabled and predictor and type(predictor.Key) == "function" then
+    -- 0.4.0: the glows have their own switch (Hotbar.lua); "enabled" is the
+    -- tracker's mark only.
+    if predictor and type(predictor.Key) == "function" then
         for _, unit in ipairs({"target", "focus"}) do
             local key = UnitExists(unit) and UnitIsDead(unit) ~= true and predictor.Key(unit)
             for family in pairs(key and DueOn(predictor, key, now) or {}) do
