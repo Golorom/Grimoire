@@ -7,7 +7,7 @@ Grimoire stands on four MIT projects by Dyre (John Bedworth). None of them is re
 | [Warlock Tools Forever](https://github.com/jbedworth/WarlockToolsForever) | 1.8.0 (aec6409) | 1.8.1 (342aa7a), 2026-11-17 | the base: Core, Commands, Layout (replaced in 0.3.0), Shards, Stones, Tracker, Dots, Predict, Control, Options, Probe, tests |
 | [Dyre's Toolkit](https://github.com/jbedworth/DyresToolkit) | 2.9.2 (e8b0094) | 2.10.0 (443b872), 2026-11-17 | 12 engine files in `Engine\`; the Threat and PetTaunt ideas, cut down |
 | [Dyre's Buff Reminders](https://github.com/jbedworth/DyresBuffReminders) | 1.8.0 | 1.9.0 (e211d64), 2026-11-16 | the patterns behind Reminders, Procs and Cooldowns |
-| [Dyre's Shields Up](https://github.com/jbedworth/DyresShieldsUp) | 8940229 | unchanged, 2026-11-16 | `Shield.lua` and the crescent textures |
+| [Dyre's Shields Up](https://github.com/jbedworth/DyresShieldsUp) | 8940229 | unchanged, 2026-11-16 | `Shield.lua` (its crescent textures were replaced in 0.3.2) |
 
 ## Ported since the fork
 
@@ -27,6 +27,7 @@ Two engine files differ from upstream by more than line 2:
 The rework of Dyre's front starts here; each replaced file no longer takes upstream changes.
 
 - `Layout.lua` (WTF's unlock with magnetic snapping, the grid and the gold outlines): replaced by `EditMode.lua` and the game's Edit Mode in 0.3.0. Upstream changes to WTF's `Layout.lua` and to its unlock code in `Core.lua` no longer apply.
+- The shield's look (0.3.2): Shields Up's crescent textures are replaced by Grimoire's own (`scripts/build_shield_art.py`, same geometry, with a gold rim, for four sides), and `Shield.lua` gained the side and flat rows settings (lines marked `Grimoire:`). Its absorb, secret-value and timing logic is unchanged, so upstream fixes there still port; anything upstream changes in how the ring is drawn does not.
 
 ## LibEditMode
 

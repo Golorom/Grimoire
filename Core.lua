@@ -752,6 +752,54 @@ local function UseShared()
     WTF.CreateAuraContainer = shared.CreateAuraContainer
 end
 
+-- The shield's Edit Mode dialog (0.3.2): style, side, sizes, number.
+function WTF.AddShieldEditModeSettings(frame)
+    local display = WTF.ShieldDisplay
+    local function Getter(key)
+        return function() return WTF.db.shield[key] end
+    end
+    local function Setter(key, sanitize)
+        return function(_, value)
+            WTF.db.shield[key] = sanitize(value)
+            display.Refresh()
+        end
+    end
+    local function Side(value)
+        for _, side in ipairs(display.SIDES) do
+            if side == value then
+                return side
+            end
+        end
+        return "right"
+    end
+    WTF.AddEditModeSettings(frame, function(kinds)
+        return {
+            {kind = kinds.Dropdown, name = "Style", default = "arc",
+                values = {{text = "Arc", value = "arc"}, {text = "Flat rows", value = "rows"}},
+                get = Getter("style"), set = Setter("style", function(value) return value == "rows" and "rows" or "arc" end),
+                desc = "A crescent with a gold rim, or flat bars in rows."},
+            {kind = kinds.Dropdown, name = "Side", default = "right",
+                values = {{text = "Right", value = "right"}, {text = "Left", value = "left"},
+                    {text = "Top", value = "top"}, {text = "Bottom", value = "bottom"}},
+                get = Getter("side"), set = Setter("side", Side),
+                hidden = function() return WTF.db.shield.style == "rows" end,
+                desc = "Which side of your character the arc curves around. The thin arcs for timed shields "
+                    .. "and the shield icons follow after /reload."},
+            {kind = kinds.Slider, name = "Size", default = display.DEFAULT_SCALE, minValue = display.SCALE_MIN,
+                maxValue = display.SCALE_MAX, valueStep = display.SCALE_STEP, get = Getter("scale"),
+                set = Setter("scale", display.SanitizeScale), desc = "The arcs or rows, in percent."},
+            {kind = kinds.Slider, name = "Number size", default = display.DEFAULT_SCALE, minValue = display.SCALE_MIN,
+                maxValue = display.SCALE_MAX, valueStep = display.SCALE_STEP, get = Getter("textScale"),
+                set = Setter("textScale", display.SanitizeScale)},
+            {kind = kinds.Slider, name = "Icon size", default = display.DEFAULT_SCALE, minValue = display.SCALE_MIN,
+                maxValue = display.SCALE_MAX, valueStep = display.SCALE_STEP, get = Getter("iconScale"),
+                set = Setter("iconScale", display.SanitizeScale)},
+            {kind = kinds.Checkbox, name = "Show the number", default = true, get = Getter("number"),
+                set = Setter("number", function(value) return value ~= false end)},
+        }
+    end)
+end
+
 -- /grim reset: the Stones bar, the DoT tracker, the shard counter, and the Control bar back to their default places.
 function WTF.ResetPositions()
     WTF.ResetShardCounterPosition()
@@ -882,7 +930,7 @@ events:SetScript("OnEvent", function(self, event, loadedName)
             layout = {register = function(frame, save)
                 WTF.RegisterMovable(frame, save, {name = "Grimoire shield",
                     default = {point = place.point, x = place.x, y = place.y}})
-            end}})
+            end, settings = WTF.AddShieldEditModeSettings}})
     end)
     Start("Diagnostics", function()
         WTF.InitializeProbe()

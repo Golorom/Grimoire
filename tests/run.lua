@@ -894,6 +894,7 @@ local function fixture(options)
         function object:SetBackdrop(backdrop) self.backdrop = backdrop end
         function object:SetStatusBarColor(...) self.barColor = {...} end
         function object:SetStatusBarTexture(texture) self.statusBarTexture = texture end
+        function object:SetOrientation(orientation) self.orientation = orientation end
         function object:SetMinMaxValues(minValue, maxValue) self.minValue, self.maxValue = minValue, maxValue end
         function object:SetValue(value) self.value = value end
         function object:GetStatusBarTexture()
@@ -7735,32 +7736,70 @@ test("shield: Grimoire hosts the shield display, locked with its other frames", 
     equal(state.wtf.db.shield.locked, true)
 end)
 
-test("shield: the mirror setting flips the crescents and the number to the left side", function()
+test("shield: four sides and flat rows from its Edit Mode dialog; 0.2's mirror becomes the left side", function()
     local state = fixture()
     local display = state.wtf.ShieldDisplay
     local frame = display.frame
-    local base = "Interface\\AddOns\\Grimoire\\Textures\\ShieldArc"
-    local function footX()
-        return frame.foot.points[#frame.foot.points][4]
+    local base = "Interface\\AddOns\\Grimoire\\Textures\\ShieldRing"
+    local function foot()
+        local point = frame.foot.points[#frame.foot.points]
+        return point[3], point[4], point[5]
     end
-    equal(state.wtf.db.shield.mirror, false, "right side by default")
-    equal(frame.background.texture, base)
-    equal(footX(), 160 * 0.8)
-    state.wtf.db.shield.mirror = true
-    display.Refresh()
-    equal(frame.background.texture, base .. "Left")
+    equal(state.wtf.db.shield.side, "right", "right side by default")
+    equal(state.wtf.db.shield.style, "arc")
+    equal(frame.background.texture, base .. "Right")
+    equal(frame.bar.statusBarTexture, base .. "Right")
+    equal(frame.bar.orientation, "VERTICAL", "fills from the foot up")
+    equal(frame.rim.texture, base .. "RimRight")
+    equal(frame.rim.shown, true, "the gold rim")
+    equal(frame.outline.shown, false)
+    local _, x = foot()
+    equal(x, 160 * 0.8, "the number under the foot")
+    local names = {}
+    for _, setting in ipairs(state.editModeEntry(frame).settings) do names[#names + 1] = setting.name end
+    equal(table.concat(names, ", "), "Style, Side, Size, Number size, Icon size, Show the number")
+    local side, style = state.editModeSetting(frame, "Side"), state.editModeSetting(frame, "Style")
+    side.set("Modern", "left")
     equal(frame.bar.statusBarTexture, base .. "Left")
-    equal(frame.timeBar.statusBarTexture, base .. "Left")
     equal(frame.sample.inner.texture, base .. "InnerLeft")
-    equal(frame.sample.innermost.texture, base .. "InnermostLeft")
     equal(#frame.foot.points, 1, "the number's anchor is replaced, not added")
-    equal(math.abs(footX() - 160 * 0.2) < 0.001, true, "the number under the left foot")
-    state.wtf.db.shield.mirror = false
-    display.Refresh()
-    equal(frame.background.texture, base)
-    equal(frame.sample.inner.texture, base .. "Inner")
-    equal(footX(), 160 * 0.8)
-    equal(display.Sanitize({mirror = "yes"}).mirror, false, "only true turns it on")
+    _, x = foot()
+    equal(math.abs(x - 160 * 0.2) < 0.001, true, "the number under the left foot")
+    side.set("Modern", "top")
+    equal(frame.bar.statusBarTexture, base .. "Top")
+    equal(frame.bar.orientation, "HORIZONTAL", "above you it fills from the left")
+    local _, fx, fy = foot()
+    equal(fx, 80)
+    equal(math.abs(fy - 160 * 0.98) < 0.001, true, "the number above the arc")
+    equal(frame.textHolder.points[1][1], "BOTTOM")
+    side.set("Modern", "bottom")
+    equal(frame.rim.texture, base .. "RimBottom")
+    equal(frame.sample.innermost.texture, base .. "InnermostBottom")
+    side.set("Modern", "diagonal")
+    equal(state.wtf.db.shield.side, "right", "only the four sides")
+    equal(side.hidden(), false)
+    style.set("Modern", "rows")
+    equal(side.hidden(), true, "no side for the rows")
+    equal(frame.width, 160)
+    equal(frame.height, 26, "three rows: 12, 5 and 5, 2 apart")
+    equal(frame.bar.statusBarTexture, "Interface\\Buttons\\WHITE8X8", "flat")
+    equal(frame.bar.orientation, "HORIZONTAL")
+    equal(frame.rim.shown, false)
+    equal(frame.outline.shown, true, "a dark outline instead")
+    local relative, rx, ry = foot()
+    equal(relative, "TOPLEFT")
+    equal(rx, 80, "the number in the middle of the top row")
+    equal(ry, -6)
+    equal(frame.sample.inner.points[1][5], -14, "the inner row under the outer one")
+    style.set("Modern", "arc")
+    equal(frame.height, 160)
+    equal(display.Sanitize({mirror = true}).side, "left", "a mirrored display from 0.2 stays on the left")
+    equal(display.Sanitize({mirror = true, side = "top"}).side, "top")
+    equal(display.Sanitize({style = "bars"}).style, "arc")
+    local placed = fixture({db = {shield = {side = "top"}}})
+    local point = placed.wtf.ShieldDisplay.frame.points[#placed.wtf.ShieldDisplay.frame.points]
+    equal(point[4], 0, "an unplaced display above you starts over your head")
+    equal(point[5], 70)
 end)
 
 test("key labels: the pet bar's labels keep their size when Edit Mode scales its buttons", function()

@@ -1,8 +1,10 @@
 local addonName, ns = ...
 
 -- Grimoire: this file is Dyre's Shields Up 1.2.1's Shield.lua (MIT, John
--- Bedworth; commit 8940229). Grimoire's one change: the mirror setting
--- (lines marked "Grimoire:", and the *Left.tga textures). Grimoire hosts it
+-- Bedworth; commit 8940229). Grimoire's changes (0.3.2, lines marked
+-- "Grimoire:"): its own art (scripts/build_shield_art.py: crescents with a
+-- gold rim, for four sides), the side setting (right, left, top, bottom,
+-- replacing 0.2's mirror) and the flat rows style. Grimoire hosts it
 -- (Core.lua: settings in GrimoireDB.shield, ns.AuraEngineKind and
 -- ns.CreateAuraContainer from the engines). The break sound needs Dyre's
 -- Sounds and stays off without it.
@@ -73,12 +75,21 @@ local addonName, ns = ...
 local VERSION = 11
 local REGISTRY_NAME = "ShieldForeverRegistry"
 
-local ARC_TEXTURE = "Interface\\AddOns\\" .. addonName .. "\\Textures\\ShieldArc"
--- The thinner crescent nested inside it, for shields that drain with time.
-local INNER_ARC_TEXTURE = ARC_TEXTURE .. "Inner"
--- The innermost crescent, for bubbles.
-local INNERMOST_ARC_TEXTURE = ARC_TEXTURE .. "Innermost"
+-- Grimoire: each crescent's fill and rim, by side: ShieldRing<Crescent><Side>
+-- and ShieldRing<Crescent>Rim<Side>. The crescents: "" the outer one (the
+-- absorb), "Inner" (shields that drain with time), "Innermost" (bubbles).
+local TEXTURE_FOLDER = "Interface\\AddOns\\" .. addonName .. "\\Textures\\"
+local OUTER, INNER, INNERMOST = "", "Inner", "Innermost"
+local FLAT_TEXTURE = "Interface\\Buttons\\WHITE8X8"
 local ARC_SIZE = 160
+-- Grimoire: the flat rows style, a bar per crescent: the outer one, then
+-- the inner and innermost under it.
+local ROWS_WIDTH = 160
+local ROW_HEIGHT = {[OUTER] = 12, [INNER] = 5, [INNERMOST] = 5}
+local ROW_GAP = 2
+local ROWS_HEIGHT = 12 + 2 + 5 + 2 + 5
+local TRACK_COLOR = {0.06, 0.06, 0.08}
+local SIDE_NAMES = {right = "Right", left = "Left", top = "Top", bottom = "Bottom"}
 -- Each crescent's height as a fraction of the square (span in
 -- scripts/build_arc.py). Its texture is stretched to fill that height, so a
 -- bar's value runs from the crescent's foot to its tip and the bar empties
@@ -87,9 +98,13 @@ local ARC_SIZE = 160
 local OUTER_SPAN = 118 / 128
 local INNER_SPAN = 94 / 128
 local INNERMOST_SPAN = 70 / 128
+local SPANS = {[OUTER] = OUTER_SPAN, [INNER] = INNER_SPAN, [INNERMOST] = INNERMOST_SPAN}
 -- The crescent sits in the right part of the square texture, so the frame
 -- centered a little right of your character puts it beside you.
 local DEFAULT_POINT = {"CENTER", "CENTER", 20, -20}
+-- Grimoire: where an unplaced display starts, by side and for the rows.
+local DEFAULT_OFFSETS = {right = {20, -20}, left = {-20, -20}, top = {0, 70}, bottom = {0, -90},
+    rows = {0, -110}}
 -- Scale changes smaller than this are none (the client returns floats).
 local SCALE_EPSILON = 0.01
 -- Classic Era and Anniversary (AuraEngine "lua": no engine, nothing secret):
@@ -118,7 +133,7 @@ local BASE_ABSORB = {
 -- Where the number goes: under the crescent's foot, in texture fractions.
 local TEXT_X = 0.8
 local TEXT_Y = 0.02
-local BACKGROUND_ALPHA = 0.35
+local BACKGROUND_ALPHA = 0.5
 -- The smallest absorb the ring shows: this many points, or this share of your
 -- health when the client lets AddOn code read it, whichever is larger. Below
 -- every real shield (rank 1 Power Word: Shield absorbs 44).
@@ -136,7 +151,7 @@ local CAPTURE_SECONDS = 0.5
 -- While unlocked the outer crescent shows full, with a label for the number,
 -- so its shape and place are plain (a part-filled sample looked broken).
 local SAMPLE_FILL = 1
-local SAMPLE_TEXT = "drag me"
+local SAMPLE_TEXT = "1.2K"
 -- Seconds past a shield's end before the ring hides, for timing slack.
 local END_SLACK = 0.2
 -- How long an absorb MTF cannot name shows after it changes: the longest
@@ -323,7 +338,10 @@ function ShieldDisplay.Sanitize(settings)
         position = position and {point = position.point, relativePoint = position.relativePoint,
             x = position.x, y = position.y},
         number = settings.number ~= false,
-        mirror = settings.mirror == true,
+        -- Grimoire: the side of your character (0.2's mirror becomes left)
+        -- and the style, an arc or flat rows.
+        side = SIDE_NAMES[settings.side] and settings.side or (settings.mirror == true and "left" or "right"),
+        style = settings.style == "rows" and "rows" or "arc",
         breakSound = settings.breakSound == true,
         breakSoundKey = ShieldDisplay.SanitizeBreakSound(settings.breakSoundKey),
         scale = ShieldDisplay.SanitizeScale(settings.scale),
@@ -564,43 +582,168 @@ local function ScaleFromCenter(scale)
     Config().position = position
 end
 
--- Grimoire: the mirror setting flips the display to curve around your
--- character's left side. Mirrored copies of the crescent textures (named with
--- MIRROR_SUFFIX) have the crescent in the left part of the square, the number
--- moves under the left foot, and an unplaced ring starts left of you.
-local MIRROR_SUFFIX = "Left"
+-- Grimoire: the display's side of your character and its style. A change
+-- re-textures and re-places the outer crescent, the sample and the number at
+-- once, also in combat (plain textures, no secure frames). The timed
+-- crescents and the shield icons take the look when their slots are built,
+-- so they follow after /reload: a bar handed to the engine is forbidden to
+-- AddOn code from then on (found in client, 13x).
+ShieldDisplay.SIDES = {"right", "left", "top", "bottom"}
+ShieldDisplay.STYLES = {"arc", "rows"}
 
-local function Mirrored()
-    return Config().mirror == true
+local function Side()
+    local side = Config().side
+    return SIDE_NAMES[side] and side or "right"
 end
 
-local function Arc(texture)
-    return Mirrored() and (texture .. MIRROR_SUFFIX) or texture
+local function Rows()
+    return Config().style == "rows"
 end
 
-local function PlaceFoot()
-    local x = Mirrored() and (1 - TEXT_X) or TEXT_X
-    frame.foot:ClearAllPoints()
-    frame.foot:SetPoint("CENTER", frame, "BOTTOMLEFT", ARC_SIZE * x, ARC_SIZE * TEXT_Y)
+local function Look()
+    return Rows() and "rows" or Side()
 end
 
--- Grimoire: a change of the mirror setting re-textures the outer crescent and
--- the sample and moves the number, at once, also in combat (plain textures,
--- no secure frames). The timed crescents take the side when their slots are
--- built, so they follow after /reload: a bar handed to the engine is
--- forbidden to AddOn code from then on (found in client, 13x).
-local function ApplySide()
-    local mirrored = Mirrored()
-    if frame.mirrored == mirrored then
+local function FillTexture(crescent)
+    if Rows() then
+        return FLAT_TEXTURE
+    end
+    return TEXTURE_FOLDER .. "ShieldRing" .. crescent .. SIDE_NAMES[Side()]
+end
+
+local function RimTexture(crescent)
+    return TEXTURE_FOLDER .. "ShieldRing" .. crescent .. "Rim" .. SIDE_NAMES[Side()]
+end
+
+-- Beside you the crescents fill from the foot upward; above or below you,
+-- and as rows, from the left.
+local function Orientation()
+    local side = Side()
+    return (Rows() or side == "top" or side == "bottom") and "HORIZONTAL" or "VERTICAL"
+end
+
+-- A crescent's region: an arc centered on the display at the crescent's own
+-- height (or width, above and below you), or a row. Anchored to the display,
+-- not the parent: the outer crescent's parent is the minimum-absorb clipping
+-- frame, which reaches below the display for the number (in client, v5 drew
+-- the outer crescent off-center). grow: pixels around a row, for its outline.
+local function Fit(region, crescent, grow)
+    grow = grow or 0
+    region:ClearAllPoints()
+    if Rows() then
+        local top = 0
+        if crescent ~= OUTER then
+            top = ROW_HEIGHT[OUTER] + ROW_GAP
+        end
+        if crescent == INNERMOST then
+            top = top + ROW_HEIGHT[INNER] + ROW_GAP
+        end
+        region:SetPoint("TOPLEFT", frame, "TOPLEFT", -grow, -top + grow)
+        region:SetPoint("BOTTOMRIGHT", frame, "TOPRIGHT", grow, -top - ROW_HEIGHT[crescent] - grow)
         return
     end
-    frame.mirrored = mirrored
-    frame.background:SetTexture(Arc(ARC_TEXTURE))
-    frame.bar:SetStatusBarTexture(Arc(ARC_TEXTURE))
-    frame.timeBar:SetStatusBarTexture(Arc(ARC_TEXTURE))
-    if frame.sample and frame.sample.inner then
-        frame.sample.inner:SetTexture(Arc(INNER_ARC_TEXTURE))
-        frame.sample.innermost:SetTexture(Arc(INNERMOST_ARC_TEXTURE))
+    local inset = ARC_SIZE * (1 - SPANS[crescent]) / 2
+    if Side() == "top" or Side() == "bottom" then
+        region:SetPoint("TOPLEFT", frame, "TOPLEFT", inset, 0)
+        region:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -inset, 0)
+    else
+        region:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, -inset)
+        region:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", 0, inset)
+    end
+end
+
+-- Gives a crescent's parts the current look: its empty track, its bars, a
+-- plain fill (the sample's), the gold rim of an arc, the dark outline of a row.
+local function Dress(parts, crescent)
+    local rows = Rows()
+    if parts.track then
+        Fit(parts.track, crescent)
+        parts.track:SetTexture(FillTexture(crescent))
+        if rows then
+            parts.track:SetVertexColor(TRACK_COLOR[1], TRACK_COLOR[2], TRACK_COLOR[3])
+            parts.track:SetAlpha(1)
+        else
+            parts.track:SetVertexColor(0, 0, 0)
+            parts.track:SetAlpha(BACKGROUND_ALPHA)
+        end
+    end
+    for _, bar in ipairs(parts.bars or {}) do
+        Fit(bar, crescent)
+        bar:SetStatusBarTexture(FillTexture(crescent))
+        bar:SetOrientation(Orientation())
+    end
+    if parts.fill then
+        Fit(parts.fill, crescent)
+        parts.fill:SetTexture(FillTexture(crescent))
+    end
+    if parts.rim then
+        Fit(parts.rim, crescent)
+        parts.rim:SetTexture(RimTexture(crescent))
+        parts.rim:SetShown(not rows)
+    end
+    if parts.outline then
+        Fit(parts.outline, crescent, 1)
+        parts.outline:SetShown(rows)
+    end
+end
+
+-- The number: under an arc's foot beside you, under the arc below you,
+-- above the arc above you, inside the top row.
+local FEET = {right = {TEXT_X, TEXT_Y, "TOP"}, left = {1 - TEXT_X, TEXT_Y, "TOP"}, bottom = {0.5, TEXT_Y, "TOP"},
+    top = {0.5, 1 - TEXT_Y, "BOTTOM"}}
+
+local function PlaceFoot()
+    frame.foot:ClearAllPoints()
+    frame.textHolder:ClearAllPoints()
+    frame.text:ClearAllPoints()
+    if Rows() then
+        frame.foot:SetPoint("CENTER", frame, "TOPLEFT", ROWS_WIDTH / 2, -ROW_HEIGHT[OUTER] / 2)
+        frame.textHolder:SetPoint("CENTER", frame.foot, "CENTER")
+        frame.text:SetPoint("CENTER", frame.textHolder, "CENTER")
+        return
+    end
+    local foot = FEET[Side()]
+    frame.foot:SetPoint("CENTER", frame, "BOTTOMLEFT", ARC_SIZE * foot[1], ARC_SIZE * foot[2])
+    frame.textHolder:SetPoint(foot[3], frame.foot, "CENTER")
+    frame.text:SetPoint(foot[3], frame.textHolder, foot[3])
+end
+
+-- The icon row: under the number; above it when the arc is above you; under
+-- the rows.
+local function PlaceIcon(button, spot)
+    local width = shield.spotCount * ICON_SIZE + (shield.spotCount - 1) * ICON_GAP
+    local x = -width / 2 + (spot - 1) * (ICON_SIZE + ICON_GAP)
+    button:ClearAllPoints()
+    if Rows() then
+        button:SetPoint("TOPLEFT", frame, "BOTTOM", x, -4)
+    elseif Side() == "top" then
+        button:SetPoint("BOTTOMLEFT", frame.text, "TOP", x, -ICON_Y)
+    else
+        button:SetPoint("TOPLEFT", frame.text, "BOTTOM", x, ICON_Y)
+    end
+end
+
+local function ApplyLook()
+    local look = Look()
+    if frame.look == look then
+        return
+    end
+    frame.look = look
+    if not frame.adopted then
+        if Rows() then
+            frame:SetSize(ROWS_WIDTH, ROWS_HEIGHT)
+        else
+            frame:SetSize(ARC_SIZE, ARC_SIZE)
+        end
+    end
+    Dress({track = frame.background, bars = {frame.bar, frame.timeBar}, rim = frame.rim, outline = frame.outline},
+        OUTER)
+    if frame.sample then
+        Dress(frame.sample.innerParts, INNER)
+        Dress(frame.sample.innermostParts, INNERMOST)
+        for _, icon in ipairs(frame.sampleIconList) do
+            PlaceIcon(icon, icon.spot)
+        end
     end
     PlaceFoot()
 end
@@ -609,7 +752,7 @@ function ShieldDisplay.Refresh()
     if not frame then
         return
     end
-    ApplySide()
+    ApplyLook()
     local settings = Config()
     local up, color = ActiveShields()
     local shown = color or SHIELDS[1].color
@@ -836,8 +979,8 @@ local function PlaceRing()
     if position then
         frame:SetPoint(position.point, UIParent, position.relativePoint, position.x, position.y)
     else
-        local x = Mirrored() and -DEFAULT_POINT[3] or DEFAULT_POINT[3]
-        frame:SetPoint(DEFAULT_POINT[1], UIParent, DEFAULT_POINT[2], x, DEFAULT_POINT[4])
+        local offsets = DEFAULT_OFFSETS[Look()]
+        frame:SetPoint(DEFAULT_POINT[1], UIParent, DEFAULT_POINT[2], offsets[1], offsets[2])
     end
 end
 
@@ -888,22 +1031,6 @@ local function AssignSpots()
     end
 end
 
-local function PlaceIcon(button, spot)
-    local width = shield.spotCount * ICON_SIZE + (shield.spotCount - 1) * ICON_GAP
-    button:ClearAllPoints()
-    button:SetPoint("TOPLEFT", frame.text, "BOTTOM", -width / 2 + (spot - 1) * (ICON_SIZE + ICON_GAP), ICON_Y)
-end
-
--- A crescent's texture or bar, centered on the display at the crescent's own
--- height. Anchored to the display, not the parent: the outer crescent's
--- parent is the minimum-absorb clipping frame, which reaches below the
--- display for the number (in client, v5 drew the outer crescent off-center).
-local function FitCrescent(region, span)
-    local inset = ARC_SIZE * (1 - span) / 2
-    region:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, -inset)
-    region:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", 0, inset)
-end
-
 local function NoMouse(region)
     for _, method in ipairs({"SetMouseClickEnabled", "SetMouseMotionEnabled"}) do
         if type(region[method]) == "function" then
@@ -940,19 +1067,18 @@ end
 local function CrescentInitializer(entry)
     return function(button)
         NoMouse(button)
-        local texture = entry.innermost and INNERMOST_ARC_TEXTURE or INNER_ARC_TEXTURE
-        local span = entry.innermost and INNERMOST_SPAN or INNER_SPAN
+        local crescent = entry.innermost and INNERMOST or INNER
         button:SetAllPoints(frame)
+        local outline = button:CreateTexture(nil, "BACKGROUND", nil, -8)
+        outline:SetColorTexture(0, 0, 0, 0.85)
         local track = button:CreateTexture(nil, "BACKGROUND")
-        FitCrescent(track, span)
-        track:SetTexture(Arc(texture))
-        track:SetVertexColor(0, 0, 0)
-        track:SetAlpha(BACKGROUND_ALPHA)
         local bar = CreateFrame("StatusBar", nil, button)
-        FitCrescent(bar, span)
-        bar:SetStatusBarTexture(Arc(texture))
-        bar:SetOrientation("VERTICAL")
         bar:SetStatusBarColor(entry.color[1], entry.color[2], entry.color[3])
+        local rimHolder = CreateFrame("Frame", nil, button)
+        rimHolder:SetAllPoints(button)
+        rimHolder:SetFrameLevel(bar:GetFrameLevel() + 1)
+        local rim = rimHolder:CreateTexture(nil, "OVERLAY")
+        Dress({track = track, bars = {bar}, rim = rim, outline = outline}, crescent)
         local direction = Enum.StatusBarTimerDirection and Enum.StatusBarTimerDirection.RemainingTime
         button:SetDurationBar(bar, {direction = direction})
     end
@@ -1012,21 +1138,23 @@ end
 local function CreateSample()
     frame.sample = CreateFrame("Frame", nil, frame)
     frame.sample:SetAllPoints()
-    local inner = frame.sample:CreateTexture(nil, "ARTWORK")
-    FitCrescent(inner, INNER_SPAN)
-    inner:SetTexture(Arc(INNER_ARC_TEXTURE))
-    frame.sample.inner = inner
-    local purple = SHIELDS[2].color
-    inner:SetVertexColor(purple[1], purple[2], purple[3])
-    local innermost = frame.sample:CreateTexture(nil, "ARTWORK")
-    FitCrescent(innermost, INNERMOST_SPAN)
-    innermost:SetTexture(Arc(INNERMOST_ARC_TEXTURE))
-    frame.sample.innermost = innermost
-    local gold = SHIELDS[#SHIELDS].color
-    innermost:SetVertexColor(gold[1], gold[2], gold[3])
+    local function Parts(color)
+        local parts = {}
+        parts.outline = frame.sample:CreateTexture(nil, "BACKGROUND", nil, -8)
+        parts.outline:SetColorTexture(0, 0, 0, 0.85)
+        parts.fill = frame.sample:CreateTexture(nil, "ARTWORK")
+        parts.fill:SetVertexColor(color[1], color[2], color[3])
+        parts.rim = frame.sample:CreateTexture(nil, "OVERLAY")
+        return parts
+    end
+    frame.sample.innerParts = Parts(SHIELDS[2].color)
+    frame.sample.innermostParts = Parts(SHIELDS[#SHIELDS].color)
+    frame.sample.inner = frame.sample.innerParts.fill
+    frame.sample.innermost = frame.sample.innermostParts.fill
     -- The sample's icons are the icon row's size.
     frame.sampleIcons = CreateFrame("Frame", nil, frame.iconHolder)
     frame.sampleIcons:SetAllPoints(frame.iconHolder)
+    frame.sampleIconList = {}
     for _, entry in ipairs(SHIELDS) do
         local spot = shield.spots[entry.key]
         if spot then
@@ -1035,11 +1163,14 @@ local function CreateSample()
             icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
             local texture = type(C_Spell.GetSpellTexture) == "function" and C_Spell.GetSpellTexture(entry.spell)
             icon:SetTexture(texture or "Interface\\Icons\\INV_Misc_QuestionMark")
-            PlaceIcon(icon, spot)
+            icon.spot = spot
+            frame.sampleIconList[#frame.sampleIconList + 1] = icon
         end
     end
     frame.sample:Hide()
     frame.sampleIcons:Hide()
+    frame.look = nil
+    ApplyLook()
 end
 
 -- A plain frame, not a secure one, so it updates and moves in combat. It takes
@@ -1069,32 +1200,28 @@ local function CreateRing()
     frame.gated:SetClipsChildren(true)
     frame.gated:SetPoint("TOPLEFT", frame, "TOPLEFT")
     frame.gated:SetPoint("BOTTOMRIGHT", frame.gate:GetStatusBarTexture(), "BOTTOMRIGHT")
+    -- Grimoire: the textures, anchors and fill direction come from the look
+    -- (ApplyLook, at the end).
+    frame.outline = frame.gated:CreateTexture(nil, "BACKGROUND", nil, -8)
+    frame.outline:SetColorTexture(0, 0, 0, 0.85)
     frame.background = frame.gated:CreateTexture(nil, "BACKGROUND")
-    FitCrescent(frame.background, OUTER_SPAN)
-    frame.mirrored = Mirrored()
-    frame.background:SetTexture(Arc(ARC_TEXTURE))
-    frame.background:SetVertexColor(0, 0, 0)
-    frame.background:SetAlpha(BACKGROUND_ALPHA)
     frame.bar = CreateFrame("StatusBar", nil, frame.gated)
-    FitCrescent(frame.bar, OUTER_SPAN)
-    frame.bar:SetStatusBarTexture(Arc(ARC_TEXTURE))
-    frame.bar:SetOrientation("VERTICAL")
     -- Classic without an amount: the same crescent, drained by the shield's time.
     frame.timeBar = CreateFrame("StatusBar", nil, frame.gated)
-    FitCrescent(frame.timeBar, OUTER_SPAN)
-    frame.timeBar:SetStatusBarTexture(Arc(ARC_TEXTURE))
-    frame.timeBar:SetOrientation("VERTICAL")
     frame.timeBar:Hide()
+    -- The gold rim over both bars.
+    frame.rimHolder = CreateFrame("Frame", nil, frame.gated)
+    frame.rimHolder:SetAllPoints(frame)
+    frame.rimHolder:SetFrameLevel(frame.bar:GetFrameLevel() + 2)
+    frame.rim = frame.rimHolder:CreateTexture(nil, "OVERLAY")
     -- The number: under the crescent's foot, in the opacity frame, at its own
     -- size, behind a gate of its own. The anchor point is in the ring, so the
     -- number follows the foot as the crescents grow; no offsets, since they
     -- would be in the number's units.
     frame.foot = frame:CreateTexture(nil, "ARTWORK")
     frame.foot:SetSize(1, 1)
-    PlaceFoot()
     frame.textHolder = CreateFrame("Frame", nil, frame.visible)
     frame.textHolder:SetSize(TEXT_BOX_WIDTH, TEXT_BOX_HEIGHT)
-    frame.textHolder:SetPoint("TOP", frame.foot, "CENTER")
     frame.textGate = CreateFrame("StatusBar", nil, frame.textHolder)
     frame.textGate:SetAllPoints()
     frame.textGate:SetStatusBarTexture(GATE_TEXTURE)
@@ -1105,13 +1232,13 @@ local function CreateRing()
     frame.textGated:SetPoint("TOPLEFT", frame.textHolder, "TOPLEFT")
     frame.textGated:SetPoint("BOTTOMRIGHT", frame.textGate:GetStatusBarTexture(), "BOTTOMRIGHT")
     frame.text = frame.textGated:CreateFontString(nil, "OVERLAY", "NumberFontNormal")
-    frame.text:SetPoint("TOP", frame.textHolder, "TOP")
     frame.text:SetShadowColor(0, 0, 0, 1)
     frame.text:SetShadowOffset(1, -1)
     -- The icon row's frame: icons anchor to the number, at their own size.
     frame.iconHolder = CreateFrame("Frame", nil, frame)
     frame.iconHolder:SetSize(1, 1)
     frame.iconHolder:SetPoint("CENTER", frame, "CENTER")
+    ApplyLook()
     if adopting then
         frame.adopted = true
         frame:Hide()
@@ -1121,6 +1248,10 @@ local function CreateRing()
     -- the ring itself takes no mouse.
     if layout then
         layout.register(frame, function(position) Config().position = position end)
+        -- Grimoire: the host's settings for the display's Edit Mode dialog.
+        if type(layout.settings) == "function" then
+            layout.settings(frame)
+        end
     end
     frame:Hide()
     -- Sized before it is placed, so a saved place (in the ring's own scaled
@@ -1260,9 +1391,10 @@ end
 -- missingSounds = optional function the display calls instead of its own
 -- chat line when Dyre's Sounds is missing, so a host says it once for all its
 -- sounds (author-approved: one line per AddOn);
--- layout = optional {register(frame, save)} that moves the ring with the
--- host's other frames (Grimoire: into Edit Mode); save(position) stores
--- {point, relativePoint, x, y} against UIParent. Or (version 10)
+-- layout = optional {register(frame, save), settings(frame)} that moves the
+-- ring with the host's other frames (Grimoire: into Edit Mode) and gives it
+-- settings there; save(position) stores {point, relativePoint, x, y} against
+-- UIParent. Or (version 10)
 -- layout = {adopt(frame), resetPosition(frame)}: the host makes the built ring
 -- its own (a Dyre's Toolkit widget, sized SIZE at DEFAULT_PLACE, with the
 -- settings table as its store), and the display then never places, drags,

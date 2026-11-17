@@ -33,7 +33,8 @@ The code's namespace table is called `WTF` (the second value of `...` in each fi
 | `Procs.lua` | Nightfall sound and icon |
 | `Cooldowns.lua` | cooldown-ready lines timed from your casts |
 | `KeyLabels.lua` | pet bar key label size and place |
-| `Shield.lua` | shield crescent (from Dyre's Shields Up) |
+| `Shield.lua` | shield display (from Dyre's Shields Up): the absorb and timed shields as arcs on one of four sides, or flat rows |
+| `scripts\build_shield_art.py` | draws the shield's arc textures (`Textures\ShieldRing*.tga`); not shipped |
 | `Probe.lua` | `/grim debug_restrictions`, `/grim debug_checks`, and the background diagnostics |
 | `Options.lua` | settings pages |
 | `Bindings.xml` | the Smart curse key binding |

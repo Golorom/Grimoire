@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.3.2 (2026-11-17)
+
+New files: restart the game client.
+
+Changed
+- Shield display: new look, gold-rimmed segmented arcs in the shield's color. In its Edit Mode dialog: Style (arc or flat rows), Side (right, left, top or bottom of your character), Size, Number size, Icon size, Show the number. The thin arcs for timed shields and the shield icons take a new side or style after /reload. A display mirrored in 0.2 starts on the left.
+- The shield's sample in Edit Mode shows an example amount instead of "drag me".
+
+Removed
+- The "Left side (mirrored)" switch; it is the Side setting now.
+
 ## 0.3.1 (2026-11-17)
 
 New files: restart the game client.

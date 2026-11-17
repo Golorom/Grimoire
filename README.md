@@ -24,7 +24,7 @@ One action reaches another player, and only on your click: a left-click on the H
 - **Demon warnings.** Your demon died; Enslave Demon broke; your demon's taunt is on autocast in a group.
 - **Nightfall.** A sound and an icon when Shadow Trance procs.
 - **Cooldown alerts.** A line just before a chosen spell is ready, timed from your own cast.
-- **Shield display.** A crescent beside your character for Sacrifice and other absorbs, on either side.
+- **Shield display.** A gold-rimmed arc for Sacrifice and other absorbs, to the right, left, top or bottom of your character, or flat rows. Set in Edit Mode.
 - **Pet bar key labels.** Keeps the pet bar's key labels at the size and place of your other bars' labels.
 - **Edit Mode.** Every Grimoire frame moves in the game's own Edit Mode, under its own name, and snaps like the game's frames.
 - **Diagnostics.** While you play, counts whether the game lets addon code read the values Grimoire's features need. Counts only, kept on your computer.

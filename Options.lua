@@ -1048,14 +1048,11 @@ local function AddAlertsPage(parent)
     Heading(layout, "Shield", "A crescent beside your character with your remaining absorb: Shadow Ward, "
         .. "Sacrifice, or any shield on you. From Dyre's Shields Up.")
     Flag(page, "GRIMOIRE_SHIELD_ENABLED", "Shield display", "shield", "enabled", true,
-        "Shows while a shield is on you. Move it in Edit Mode.",
+        "Shows while a shield is on you. Its style (arc or flat rows), side, and sizes are set in Edit Mode: "
+            .. "select it there.",
         function() WTF.ShieldDisplay.Refresh() end)
     Flag(page, "GRIMOIRE_SHIELD_NUMBER", "Show the absorb number", "shield", "number", true,
         "The amount left, under the crescent.", function() WTF.ShieldDisplay.Refresh() end)
-    Flag(page, "GRIMOIRE_SHIELD_MIRROR", "Left side (mirrored)", "shield", "mirror", false,
-        "Flips the crescent to curve around your character's left side. Move it into place in Edit Mode. "
-            .. "The thin inner crescents for timed shields flip after /reload.",
-        function() WTF.ShieldDisplay.Refresh() end)
 end
 
 -- Grimoire 0.2.1: the background diagnostics (Probe.lua) on a page of their own.
