@@ -188,6 +188,20 @@ function WTF.RefreshTracker()
     end
 end
 
+-- The engine's three parts in Edit Mode. Focus and list default to stacked
+-- under the target part; Reset Position puts them a little below it.
+local SECTION_INFO = {
+    [NAMES.target] = {name = "Grimoire DoT tracker", y = 0},
+    [NAMES.focus] = {name = "Grimoire DoT tracker focus", y = -60},
+    [NAMES.list] = {name = "Grimoire DoT tracker list", y = -120},
+}
+
+local function RegisterSection(frame, save)
+    local info = SECTION_INFO[frame:GetName()] or {name = frame:GetName(), y = 0}
+    WTF.RegisterMovable(frame, save, {name = info.name,
+        default = {point = DEFAULT_POINT[1], x = DEFAULT_POINT[3], y = DEFAULT_POINT[4] + info.y}})
+end
+
 function WTF.InitializeTracker()
     local available, missing = WTF.CheckTrackerCapabilities()
     if not available then
@@ -203,9 +217,10 @@ function WTF.InitializeTracker()
         point = DEFAULT_POINT,
         slotColor = WTF.SlotColor,
         panelColor = WTF.PanelColor,
-        movable = {register = WTF.RegisterMovable, beginDrag = WTF.BeginDrag, endDrag = WTF.EndDrag},
+        -- Each part moves in Edit Mode (EditMode.lua) under its own name.
+        movable = {register = RegisterSection, beginDrag = WTF.BeginDrag, endDrag = WTF.EndDrag},
         locked = function() return WTF.db.locked ~= false end,
-        -- The Toolkit's Ctrl-drag of a locked frame; Layout.lua has none.
+        -- The Toolkit's Ctrl-drag of a locked frame; Edit Mode does the moving.
         ctrlMove = false,
         predictor = WTF.predictor,
         onSpellsChanged = function() WTF.RefreshPlateDots() end,

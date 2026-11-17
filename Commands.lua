@@ -1,10 +1,11 @@
 local _, WTF = ...
 
-local USAGE = "Use /grim, /grim test (sample alerts), /grim shards, /grim stones, /grim unlock, /grim lock, "
+local USAGE = "Use /grim, /grim test (sample alerts), /grim shards, /grim stones, "
     .. "/grim reset, /grim reset_focus, or for testing /grim debug_log, debug_log_save, debug_log_reset, debug_checks, "
     .. "debug_restrictions, debug_alerts, debug_reminders, "
     .. "debug_threat, debug_pet, debug_procs, debug_cooldowns, debug_shield, debug_shards, debug_stones, "
-    .. "debug_tracker, debug_predict, debug_recast, debug_control."
+    .. "debug_tracker, debug_predict, debug_recast, debug_control, debug_editmode. "
+    .. "Frames move in the game's Edit Mode."
 local UNAVAILABLE = "Grimoire is unavailable. Check its login message."
 
 -- Each command is one word; "" opens the settings. Handlers live in the other
@@ -19,8 +20,10 @@ local COMMANDS = {
     debug_shards = {handler = "ReportShardDebug", always = true},
     reset = {handler = "ResetPositions"},
     reset_focus = {handler = "ResetFocusWorks"},
-    unlock = {handler = "Unlock"},
-    lock = {handler = "Lock"},
+    -- Frames move in Edit Mode since 0.3.0; these two say so.
+    unlock = {handler = "ShowEditModeHelp", always = true},
+    lock = {handler = "ShowEditModeHelp", always = true},
+    debug_editmode = {handler = "ReportEditModeDebug", always = true},
     stones = {handler = "ReportStoneStatus"},
     debug_stones = {handler = "ReportStoneDebug"},
     debug_tracker = {handler = "ReportTrackerDebug", always = true},

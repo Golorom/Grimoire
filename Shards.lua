@@ -375,7 +375,6 @@ function WTF.RefreshShardCounter()
     if not counter then
         return
     end
-    counter.mover:SetShown(not WTF.db.locked)
     if not WTF.db.shards.counter then
         counter:Hide()
         return
@@ -417,7 +416,6 @@ local function CreateCounter()
     counter:SetClampedToScreen(true)
     counter:SetMovable(true)
     counter:EnableMouse(true)
-    counter:RegisterForDrag("LeftButton")
     counter.icon = counter:CreateTexture(nil, "ARTWORK")
     counter.icon:SetAllPoints()
     counter.icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
@@ -438,13 +436,12 @@ local function CreateCounter()
     end
     counter.count:SetShadowColor(0, 0, 0, 1)
     counter.count:SetShadowOffset(1, -1)
-    -- Dragging and snapping: Layout.lua.
-    counter:SetScript("OnDragStart", WTF.BeginDrag)
-    counter:SetScript("OnDragStop", WTF.EndDrag)
-    WTF.RegisterMovable(counter, function(position) WTF.db.shards.counterPosition = position end)
+    -- Moves in Edit Mode (EditMode.lua).
+    WTF.RegisterMovable(counter, function(position) WTF.db.shards.counterPosition = position end,
+        {name = "Grimoire shard counter", default = {point = "CENTER",
+            x = UIParent:GetWidth() * (COUNTER_DEFAULT_X - 0.5), y = UIParent:GetHeight() * (COUNTER_DEFAULT_Y - 0.5)}})
     counter:SetScript("OnEnter", ShowCounterTooltip)
     counter:SetScript("OnLeave", function() GameTooltip:Hide() end)
-    counter.mover = WTF.CreateMover(counter)
     -- The saved place is in the counter's own scale, so the scale comes first.
     counter:SetScale(WTF.db.shards.counterScale / 100)
     PlaceCounter()

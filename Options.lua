@@ -195,7 +195,7 @@ local function AddShardPage(parent)
     Flag(page, "GRIMOIRE_SHARDS_REPORT", "Report deletions in chat", "shards", "report", true,
         "Print one chat line for each Soul Shard Grimoire deletes. Off by default.")
     local counterInitializer = Flag(page, "GRIMOIRE_SHARDS_COUNTER", "Show the shard counter", "shards", "counter",
-        true, "A Soul Shard icon with your shard count: red when low, green at your limit. Drag it to move it.",
+        true, "A Soul Shard icon with your shard count: red when low, green at your limit. Move it in Edit Mode.",
         RefreshShardCounter)
     local low = Proxy(page, "GRIMOIRE_SHARDS_COUNTER_LOW", Settings.VarType.Number, "Low shard warning",
         WTF.DEFAULT_SHARD_LOW,
@@ -1024,7 +1024,7 @@ local function AddAlertsPage(parent)
         "The game plays the Imp's spell chirp the moment Nightfall (Shadow Trance) lands, also in combat.",
         ApplyProcSounds)
     Flag(page, "GRIMOIRE_PROCS_ICON", "Nightfall icon", "procs", "icon", true,
-        "A Shadow Trance icon with its time left while it is up. Unlock frames to move it.",
+        "A Shadow Trance icon with its time left while it is up. Move it in Edit Mode.",
         function() WTF.RefreshProcs() end)
     Flag(page, "GRIMOIRE_COOLDOWNS_ENABLED", "Cooldown alerts", "cooldowns", "enabled", true,
         "A line just before a chosen spell is ready again, timed from your cast.")
@@ -1040,12 +1040,12 @@ local function AddAlertsPage(parent)
     Heading(layout, "Shield", "A crescent beside your character with your remaining absorb: Shadow Ward, "
         .. "Sacrifice, or any shield on you. From Dyre's Shields Up.")
     Flag(page, "GRIMOIRE_SHIELD_ENABLED", "Shield display", "shield", "enabled", true,
-        "Shows while a shield is on you. Unlock frames to move it.",
+        "Shows while a shield is on you. Move it in Edit Mode.",
         function() WTF.ShieldDisplay.Refresh() end)
     Flag(page, "GRIMOIRE_SHIELD_NUMBER", "Show the absorb number", "shield", "number", true,
         "The amount left, under the crescent.", function() WTF.ShieldDisplay.Refresh() end)
     Flag(page, "GRIMOIRE_SHIELD_MIRROR", "Left side (mirrored)", "shield", "mirror", false,
-        "Flips the crescent to curve around your character's left side. Unlock frames to drag it into place. "
+        "Flips the crescent to curve around your character's left side. Move it into place in Edit Mode. "
             .. "The thin inner crescents for timed shields flip after /reload.",
         function() WTF.ShieldDisplay.Refresh() end)
 end
@@ -1083,7 +1083,8 @@ function WTF.InitializeOptions()
     if not HasSettingsAPI() then
         return
     end
-    category = Settings.RegisterVerticalLayoutCategory(TITLE)
+    local layout
+    category, layout = Settings.RegisterVerticalLayoutCategory(TITLE)
     Flag(category, "GRIMOIRE_SHARDS_ENABLED", "Soul Shard management", "shards", "enabled", true,
         "Delete Soul Shards that Drain Soul creates above your limit. Shards you move into your bags are never deleted.")
     Flag(category, "GRIMOIRE_STONES_ENABLED", "Stones", "stones", "enabled", true,
@@ -1099,30 +1100,11 @@ function WTF.InitializeOptions()
     Flag(category, "GRIMOIRE_PET_KEY_LABELS", "Pet bar key labels at normal size", "keyLabels", "petNormal", true,
         "Edit Mode's Icon Size makes the pet bar's key labels grow with its buttons. With this on they stay the "
             .. "size of your other bars' labels.", function() WTF.RefreshKeyLabels() end)
-    do
-        local unlocked = Proxy(category, "GRIMOIRE_UNLOCKED", Settings.VarType.Boolean, "Unlock frames to move them",
-            false,
-            function() return not WTF.db.locked end,
-            function(value)
-                if value == true then
-                    WTF.Unlock()
-                else
-                    WTF.Lock()
-                end
-            end)
-        Settings.CreateCheckbox(category, unlocked,
-            "Outline the Stones bar and the shard counter, and show sample DoT tracker rows, so you can drag "
-                .. "them; untick to lock them again. /grim unlock and /grim lock do the same, and /grim reset moves "
-                .. "them back.")
-        local grid = Proxy(category, "GRIMOIRE_GRID", Settings.VarType.Boolean, "Show a grid while unlocked", true,
-            function() return WTF.db.grid end,
-            function(value)
-                WTF.db.grid = value == true
-                WTF.RefreshGrid()
-            end)
-        Settings.CreateCheckbox(category, grid, "While frames are unlocked, draw a faint grid over the screen "
-            .. "with the center lines in red, so you can line frames up.")
-    end
+    -- 0.3.0: frames move in the game's Edit Mode (EditMode.lua), so the
+    -- unlock switch and the grid are gone.
+    Heading(layout, "Moving frames", "Grimoire's frames move in the game's Edit Mode: press Esc, then Edit Mode. "
+        .. "Each shows there with its name and a sample. Drag it, or select it and type exact coordinates. "
+        .. "/grim reset puts them all back.")
     AddShardPage(category)
     AddStonesPage(category)
     AddTrackerPage(category)

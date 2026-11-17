@@ -123,10 +123,8 @@ function WTF.RefreshProcs()
     if not holder then
         return
     end
-    holder.mover:SetShown(not WTF.db.locked)
+    -- In Edit Mode: a dim sample, so the spot shows while you place it.
     holder.sample:SetShown(not WTF.db.locked)
-    -- Takes the mouse only while unlocked, to be dragged.
-    holder:EnableMouse(not WTF.db.locked)
     holder:SetShown(WTF.db.procs.icon or not WTF.db.locked)
 end
 
@@ -144,12 +142,8 @@ local function CreateIcon()
     holder:SetClampedToScreen(true)
     holder:SetMovable(true)
     holder:EnableMouse(false)
-    holder:RegisterForDrag("LeftButton")
-    holder:SetScript("OnDragStart", WTF.BeginDrag)
-    holder:SetScript("OnDragStop", WTF.EndDrag)
-    WTF.RegisterMovable(holder, function(position) WTF.db.procs.position = position end)
-    holder.mover = WTF.CreateMover(holder)
-    -- Unlocked: a dim sample, so the spot shows while you place it.
+    WTF.RegisterMovable(holder, function(position) WTF.db.procs.position = position end,
+        {name = "Grimoire Nightfall icon", default = WTF.EditModeDefault(DEFAULT_POINT)})
     holder.sample = holder:CreateTexture(nil, "BACKGROUND")
     holder.sample:SetAllPoints()
     holder.sample:SetTexture(C_Spell.GetSpellTexture and C_Spell.GetSpellTexture(BUFF_IDS[1]) or 136223)

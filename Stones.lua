@@ -595,15 +595,6 @@ local function PlaceBar(bar)
     end
 end
 
--- Dragging and snapping: Layout.lua.
-local function StartDrag()
-    WTF.BeginDrag(buttons.bar)
-end
-
-local function StopDrag()
-    WTF.EndDrag(buttons.bar)
-end
-
 local function CreateStoneButton(bar, name, kind, index)
     local button = CreateFrame("Button", name, bar, "SecureActionButtonTemplate")
     button.kind = kind
@@ -628,16 +619,7 @@ local function CreateStoneButton(bar, name, kind, index)
     button:SetScript("PostClick", PostClick)
     button:SetScript("OnEnter", ShowTooltip)
     button:SetScript("OnLeave", function() GameTooltip:Hide() end)
-    button:RegisterForDrag("LeftButton")
-    button:SetScript("OnDragStart", StartDrag)
-    button:SetScript("OnDragStop", StopDrag)
     return button
-end
-
-function WTF.RefreshStonesMover()
-    if buttons.bar then
-        buttons.bar.mover:SetShown(not WTF.db.locked)
-    end
 end
 
 -- The bar holds secure buttons, so its size changes only out of combat; it
@@ -873,11 +855,9 @@ function WTF.InitializeStones()
     bar:SetMovable(true)
     bar:SetClampedToScreen(true)
     bar:EnableMouse(true)
-    bar:RegisterForDrag("LeftButton")
-    bar:SetScript("OnDragStart", StartDrag)
-    bar:SetScript("OnDragStop", StopDrag)
-    bar.mover = WTF.CreateMover(bar)
-    WTF.RegisterMovable(bar, function(position) WTF.db.stones.position = position end)
+    -- Moves in Edit Mode (EditMode.lua).
+    WTF.RegisterMovable(bar, function(position) WTF.db.stones.position = position end,
+        {name = "Grimoire Stones bar", default = WTF.EditModeDefault(DEFAULT_POINT)})
     buttons.bar = bar
     buttons.soulstone = CreateStoneButton(bar, "GrimoireSoulstone", "soulstone", 1)
     buttons.healthstone = CreateStoneButton(bar, "GrimoireHealthstone", "healthstone", 2)

@@ -26,6 +26,7 @@ One action reaches another player, and only on your click: a left-click on the H
 - **Cooldown alerts.** A line just before a chosen spell is ready, timed from your own cast.
 - **Shield display.** A crescent beside your character for Sacrifice and other absorbs, on either side.
 - **Pet bar key labels.** Keeps the pet bar's key labels at the size and place of your other bars' labels.
+- **Edit Mode.** Every Grimoire frame moves in the game's own Edit Mode, under its own name.
 - **Diagnostics.** While you play, counts whether the game lets addon code read the values Grimoire's features need. Counts only, kept on your computer.
 
 ## How it differs from Warlock Tools Forever
@@ -37,6 +38,7 @@ One action reaches another player, and only on your click: a left-click on the H
 | Alert window, reminders, threat, demon, Nightfall and cooldown alerts, shield display | in Dyre's other addons (Buff Reminders, Shields Up, Toolkit) | folded in, rewritten to send nothing |
 | Background diagnostics, pet bar key labels | no | yes |
 | Settings home | inside Dyre's Toolkit's panel | its own page: Options, AddOns, Grimoire |
+| Moving frames | its own unlock, with magnetic snapping | the game's Edit Mode |
 | Other classes, other Dyre addons | supported by the Toolkit | Warlock only |
 
 Internal Lua names are kept as in WTF (the namespace is still called `WTF` in the code), so upstream changes can be compared and ported line by line. See [docs/UPSTREAM.md](docs/UPSTREAM.md).
@@ -68,11 +70,12 @@ When reporting a problem, include the BugSack text and the output of `/grim debu
 |---|---|
 | `/grim` | opens the settings |
 | `/grim test` | shows three sample alerts |
-| `/grim unlock`, `/grim lock` | lets you drag Grimoire's frames, then fixes them |
 | `/grim reset` | moves the frames back to their default places |
 | `/grim shards`, `/grim stones` | prints the current state in your chat frame |
 | `/grim debug_log` | prints the diagnostics; `debug_log_save` writes them to disk (a reload), `debug_log_reset` clears them |
 | `/grim debug_...` | read-only diagnostics per part; any unknown word, such as `/grim help`, lists them |
+
+Frames move in the game's Edit Mode: press Esc, then Edit Mode.
 
 ## Documentation
 
@@ -85,5 +88,7 @@ When reporting a problem, include the BugSack text and the output of `/grim debu
 ## License and credits
 
 MIT, see [LICENSE](LICENSE). The original work is copyright (c) 2026 John Bedworth (Dyre): Warlock Tools Forever, Dyre's Toolkit, Dyre's Buff Reminders and Dyre's Shields Up, all MIT. Grimoire's changes are released under the same license. Dyre's Sounds is not included: it is not open-licensed.
+
+`Libs\LibEditMode` is [LibEditMode](https://github.com/p3lim-wow/LibEditMode) by p3lim (Adrian L Lange), embedded unmodified under its own license (`Libs\LibEditMode\LICENSE.txt`), which is not MIT.
 
 Grimoire is not Dyre's addon. Please do not report its problems to him.

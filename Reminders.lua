@@ -175,8 +175,8 @@ local function Apply()
     end
     ReadSpells()
     local settings = WTF.db.reminders
+    -- In Edit Mode both icons show, so the holder can be found and moved.
     local unlocked = not WTF.db.locked
-    holder.mover:SetShown(unlocked)
     -- Armor.
     local armorButton = buttons.armor
     local armorName = ArmorName()
@@ -286,9 +286,6 @@ local function CreateButton(kind, index)
     border:SetBackdropBorderColor(GOLD[1], GOLD[2], GOLD[3])
     button:SetScript("OnEnter", ShowTooltip)
     button:SetScript("OnLeave", function() GameTooltip:Hide() end)
-    button:RegisterForDrag("LeftButton")
-    button:SetScript("OnDragStart", function() WTF.BeginDrag(holder) end)
-    button:SetScript("OnDragStop", function() WTF.EndDrag(holder) end)
     button:Hide()
     return button
 end
@@ -326,8 +323,8 @@ function WTF.InitializeReminders()
     holder:SetClampedToScreen(true)
     holder:SetMovable(true)
     holder:EnableMouse(false)
-    WTF.RegisterMovable(holder, function(position) WTF.db.reminders.position = position end)
-    holder.mover = WTF.CreateMover(holder)
+    WTF.RegisterMovable(holder, function(position) WTF.db.reminders.position = position end,
+        {name = "Grimoire reminders", default = WTF.EditModeDefault(DEFAULT_POINT)})
     buttons.armor = CreateButton("armor", 1)
     buttons.demon = CreateButton("demon", 2)
     WTF.reminderButtons = buttons

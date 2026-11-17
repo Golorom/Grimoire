@@ -2,7 +2,7 @@
 ## Title: Grimoire
 ## Notes: Personal Warlock tools for WoW Forever, forked from Warlock Tools Forever by Dyre
 ## Author: R.
-## Version: 0.2.3
+## Version: 0.3.0
 ## IconTexture: Interface\Icons\INV_Misc_Book_06
 ## Category: Warlock
 ## SavedVariables: GrimoireAccountDB
@@ -22,9 +22,12 @@ Engine\DotTracker.lua
 Engine\PlateDots.lua
 Engine\DotPredict.lua
 
+Libs\LibEditMode\namespaced.lua [AllowLoadGameType camelot, standard]
+Libs\LibEditMode\embed.xml [AllowLoadGameType camelot, standard]
+
 Commands.lua
 Core.lua
-Layout.lua
+EditMode.lua
 Shards.lua
 Stones.lua
 Tracker.lua

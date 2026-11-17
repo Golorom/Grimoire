@@ -35,7 +35,7 @@ local TOOLKIT_FILES = {"Engine/Shim.lua", "Engine/Auras.lua", "Engine/Units.lua"
     "Engine/Spells.lua", "Engine/Macros.lua", "Engine/Announce.lua", "Engine/ClassData.lua", "Engine/Owners.lua",
     "Engine/Control.lua", "Engine/DotTracker.lua", "Engine/PlateDots.lua", "Engine/DotPredict.lua"}
 local TOOLKIT_DIR = ""
-local RUNTIME_FILES = {"Commands.lua", "Core.lua", "Layout.lua", "Shards.lua", "Stones.lua", "Tracker.lua",
+local RUNTIME_FILES = {"Commands.lua", "Core.lua", "EditMode.lua", "Shards.lua", "Stones.lua", "Tracker.lua",
     "Dots.lua", "Predict.lua", "Recast.lua", "Control.lua", "Alerts.lua", "Reminders.lua", "Threat.lua", "Pet.lua", "Procs.lua",
     "Cooldowns.lua", "KeyLabels.lua", "Shield.lua", "Probe.lua", "Options.lua"}
 local SHARD = 6265
@@ -1193,6 +1193,46 @@ local function fixture(options)
     for index = before + 1, #state.frames do
         state.sharedFrames[state.frames[index]] = true
     end
+    -- Edit Mode (0.3.0): a stand-in for LibEditMode, which the TOC loads
+    -- before Grimoire's files. options.noEditMode: a client without it.
+    state.editModeFrames = {}
+    local editModeCallbacks = {enter = {}, exit = {}}
+    if not options.noEditMode then
+        env.C_EditMode = env.C_EditMode or {}
+        state.wtf.LibEditMode = {
+            frameSelections = {},
+            AddFrame = function(lib, frame, callback, default, name)
+                lib.frameSelections[frame] = {
+                    SetFrameStrata = function(self, value) self.strata = value end,
+                    SetFrameLevel = function(self, value) self.level = value end,
+                }
+                state.editModeFrames[#state.editModeFrames + 1] = {frame = frame, callback = callback,
+                    default = default, name = name}
+            end,
+            RegisterCallback = function(_, event, callback)
+                local list = editModeCallbacks[event]
+                if list then list[#list + 1] = callback end
+            end,
+        }
+    end
+    -- Opens or closes Edit Mode, as LibEditMode's enter and exit callbacks do.
+    function state.editMode(open)
+        for _, callback in ipairs(editModeCallbacks[open and "enter" or "exit"]) do callback() end
+    end
+    function state.editModeEntry(frame)
+        for _, entry in ipairs(state.editModeFrames) do
+            if entry.frame == frame then return entry end
+        end
+    end
+    -- A frame moved in Edit Mode, as LibEditMode does it: anchored to its
+    -- parent at a point, then the callback.
+    function state.moveInEditMode(frame, point, x, y)
+        local entry = state.editModeEntry(frame)
+        if not entry then error("not in Edit Mode: " .. tostring(frame:GetName())) end
+        frame:ClearAllPoints()
+        frame:SetPoint(point, x, y)
+        entry.callback(frame, "Modern", point, x, y)
+    end
     for _, path in ipairs(options.files or RUNTIME_FILES) do
         local chunk, message = loadfile(path)
         if not chunk then error(message) end
@@ -1397,7 +1437,7 @@ test("debug_shards says whether the shard counter was made, shown, and where (Cl
     local counter = state.wtf.shardCounter
     equal(counter.points[#counter.points][4], 1000 * 0.55, "55% across the screen, at any width")
     equal(counter.points[#counter.points][5], 800 * 0.42, "a little below the middle")
-    equal(counter.mover.strata, counter:GetFrameStrata(), "the gold outline is on the counter's strata, never under it")
+    equal(state.wtf.LibEditMode.frameSelections[counter] ~= nil, true, "in Edit Mode")
     contains(all, "strata=MEDIUM level=1")
     equal(state.wtf.shardCounter.strata, nil, "UIParent's strata, so dialogs and the Settings panel stay above it")
     equal(state.env.GrimoireStones.strata, nil, "the Stones bar too")
@@ -2557,24 +2597,26 @@ test("the Stones bar follows the module and show settings, after combat if neede
     state.emit("PLAYER_REGEN_ENABLED")
     equal(bar.shown, false)
 end)
-test("the Stones bar drags unless locked or in combat, and remembers its place", function()
+test("the Stones bar moves in Edit Mode under its name and remembers its place", function()
     local state = stonesFixture()
-    state.slash("unlock")
     local bar, soul = state.env.GrimoireStones, state.env[SOUL]
-    soul.scripts.OnDragStart(soul)
-    equal(bar.moving, true)
-    bar:ClearAllPoints()
-    bar:SetPoint("CENTER", nil, "BOTTOMLEFT", 110, 220)
-    soul.scripts.OnDragStop(soul)
-    equal(state.wtf.db.stones.position.relativePoint, "BOTTOMLEFT")
-    equal(state.wtf.db.stones.position.x, 110)
-    state.slash("lock")
-    soul.scripts.OnDragStart(soul)
-    equal(bar.moving, false)
-    state.slash("unlock")
-    state.combat = true
-    bar.scripts.OnDragStart(bar)
-    equal(bar.moving, false)
+    local entry = state.editModeEntry(bar)
+    equal(entry.name, "Grimoire Stones bar")
+    equal(entry.default.point, "CENTER")
+    equal(entry.default.x, 260, "Reset Position goes to the default place")
+    equal(entry.default.y, -140)
+    equal(bar.scripts.OnDragStart, nil, "no drag of its own")
+    equal(soul.scripts.OnDragStart, nil, "nor by its buttons")
+    state.moveInEditMode(bar, "BOTTOMLEFT", 110, 220)
+    local position = state.wtf.db.stones.position
+    equal(position.point, "BOTTOMLEFT")
+    equal(position.relativePoint, "BOTTOMLEFT")
+    equal(position.x, 110)
+    equal(position.y, 220)
+    local saved = stonesFixture({db = {stones = {position = position}}})
+    local point = saved.env.GrimoireStones.points[#saved.env.GrimoireStones.points]
+    equal(point[1], "BOTTOMLEFT", "the place survives a reload")
+    equal(point[4], 110)
 end)
 test("the shard counter shows your count, red when low, green at the limit, and can be turned off", function()
     local state = fixture()
@@ -2613,20 +2655,17 @@ test("the low shard warning is a setting, 2 by default", function()
     local saved = fixture({db = {shards = {counterLow = "lots"}}})
     equal(saved.wtf.db.shards.counterLow, 2, "a bad saved value becomes the default")
 end)
-test("the shard counter drags unless locked, saves its place, and resets", function()
+test("the shard counter moves in Edit Mode, saves its place, and resets", function()
     local state = fixture()
     local counter = state.wtf.shardCounter
-    state.slash("unlock")
-    counter.scripts.OnDragStart(counter)
-    equal(counter.moving, true)
-    counter:ClearAllPoints()
-    counter:SetPoint("CENTER", state.env.UIParent, "BOTTOMLEFT", 90, 700)
-    counter.scripts.OnDragStop(counter)
-    equal(state.wtf.db.shards.counterPosition.point, "CENTER")
-    equal(state.wtf.db.shards.counterPosition.y, 700)
-    state.slash("lock")
-    counter.scripts.OnDragStart(counter)
-    equal(counter.moving, false, "locked")
+    local entry = state.editModeEntry(counter)
+    equal(entry.name, "Grimoire shard counter")
+    equal(math.floor(entry.default.x + 0.5), 50, "the default place, from the screen's center")
+    equal(math.floor(entry.default.y + 0.5), math.floor(800 * -0.08 + 0.5))
+    equal(counter.scripts.OnDragStart, nil, "no drag of its own")
+    state.moveInEditMode(counter, "TOPRIGHT", -90, -100)
+    equal(state.wtf.db.shards.counterPosition.point, "TOPRIGHT")
+    equal(state.wtf.db.shards.counterPosition.y, -100)
     state.slash("reset")
     equal(state.wtf.db.shards.counterPosition, nil)
     equal(counter.points[1][1], "CENTER")
@@ -2734,10 +2773,10 @@ test("a Fear on your focus shows in the Focus box, not again in the rows", funct
 end)
 test("the Focus box follows the Control bar's switch and shows while unlocked", function()
     local state = controlFixture()
-    state.slash("unlock")
+    state.editMode(true)
     equal(state.drivers[focusBox(state)], "show", "unlocked: a sample to drag by")
     equal(focusBox(state).display.name.text, "Focus (sample)")
-    state.slash("lock")
+    state.editMode(false)
     state.settings.GRIMOIRE_CONTROL_ENABLED:SetValue(false)
     equal(state.drivers[focusBox(state)], "hide", "the Control bar off: no box")
     equal(focusBox(state).attributes.macrotext1, nil)
@@ -3180,11 +3219,10 @@ test("an Incubus that knows Seduction by its own ID gets the macro too; one that
 end)
 test("unlocked, the control bar shows samples to drag; debug_control reports the rows", function()
     local state = controlFixture()
-    state.slash("unlock")
+    state.editMode(true)
     equal(controlRow(state, 1).name.text, "Fear (sample)")
     equal(controlRow(state, 2).name.text, "Banish (sample)")
-    equal(state.env.GrimoireControl.mover.shown, true)
-    state.slash("lock")
+    state.editMode(false)
     equal(controlRow(state, 1).shown, false)
     state.settings.GRIMOIRE_CONTROL_ENABLED:SetValue(false)
     castAt(state, FEAR, "nameplate3")
@@ -3215,21 +3253,6 @@ local function registeredMovable(state, frame)
     return false
 end
 
-
--- Magnetic frames -------------------------------------------------------------------
-
-local function centerOf(state, frame)
-    local x, y = state.absCenter(frame)
-    return math.floor(x + 0.5), math.floor(y + 0.5)
-end
-
-local function dropAt(state, frame, x, y, handle)
-    handle = handle or frame
-    handle.scripts.OnDragStart(handle)
-    frame:ClearAllPoints()
-    frame:SetPoint("CENTER", nil, "BOTTOMLEFT", x / frame:GetEffectiveScale(), y / frame:GetEffectiveScale())
-    handle.scripts.OnDragStop(handle)
-end
 
 local function initializerFor(page, variable)
     for _, initializer in ipairs(page.initializers) do
@@ -3288,158 +3311,95 @@ local function wait(state, seconds)
     state.runTimers()
 end
 
--- The registered Nightfall aura sounds.
-test("a frame dropped near another snaps beside it, 20 apart and lined up", function()
+-- Edit Mode (0.3.0) ------------------------------------------------------------------
+
+local EDIT_MODE_NAMES = {"Grimoire shard counter", "Grimoire Stones bar", "Grimoire DoT tracker",
+    "Grimoire DoT tracker focus", "Grimoire DoT tracker list", "Grimoire Control bar", "Grimoire alerts",
+    "Grimoire reminders", "Grimoire Nightfall icon", "Grimoire shield"}
+
+test("every frame is in Edit Mode under its own name, its highlight over its buttons", function()
     local state = stonesFixture()
-    state.slash("unlock")
-    local bar, counter = state.env.GrimoireStones, state.wtf.shardCounter
-    dropAt(state, bar, 400, 300)
-    local barX, barY = centerOf(state, bar)
-    local barHalfW, barHalfH = bar.width / 2, bar.height / 2
-    local half = counter.width / 2
-    -- Dropped a little right of the bar, near its top edge: tops line up.
-    dropAt(state, counter, barX + barHalfW + 20 + half + 6, barY + barHalfH - (counter.height / 2) + 5)
-    local x, y = centerOf(state, counter)
-    equal(x, barX + barHalfW + 20 + half, "20 past the bar's right edge")
-    equal(y + counter.height / 2, barY + barHalfH, "tops aligned")
-    -- Under the bar, near its left edge: lefts line up.
-    dropAt(state, counter, barX - barHalfW + half + 4, barY - barHalfH - 20 - counter.height / 2 - 7)
-    x, y = centerOf(state, counter)
-    equal(x - half, barX - barHalfW, "lefts aligned")
-    equal(y + counter.height / 2, barY - barHalfH - 20, "20 below")
-    -- Far away: it stays where it lands.
-    dropAt(state, counter, 900, 100)
-    equal(select(1, centerOf(state, counter)), 900)
-end)
-test("Shift-dragging a frame moves every frame snapped to it", function()
-    local state = stonesFixture()
-    state.slash("unlock")
-    local bar, counter = state.env.GrimoireStones, state.wtf.shardCounter
-    dropAt(state, bar, 400, 300)
-    local barX, barY = centerOf(state, bar)
-    dropAt(state, counter, barX + bar.width / 2 + 20 + counter.width / 2 + 3, barY)
-    local counterX, counterY = centerOf(state, counter)
-    state.shift = true
-    dropAt(state, bar, 150, 760)
-    local newBarX, newBarY = centerOf(state, bar)
-    local movedX, movedY = centerOf(state, counter)
-    equal(movedX - newBarX, counterX - barX, "the counter came along, the same distance away")
-    equal(movedY - newBarY, counterY - barY)
-    equal(state.wtf.db.shards.counterPosition.relativePoint, "BOTTOMLEFT", "each saved on its own")
-    state.shift = false
-    dropAt(state, bar, 600, 600)
-    equal(select(1, centerOf(state, counter)), movedX, "without Shift the bar leaves alone")
-end)
-test("a Shift-dragged group that snaps keeps its spacing", function()
-    local state = stonesFixture()
-    state.slash("unlock")
-    local bar, counter = state.env.GrimoireStones, state.wtf.shardCounter
-    local tracker = state.env.GrimoireTracker
-    dropAt(state, bar, 400, 300)
-    local barX, barY = centerOf(state, bar)
-    dropAt(state, counter, barX + bar.width / 2 + 20 + counter.width / 2, barY)
-    local gapX = select(1, centerOf(state, counter)) - barX
-    -- Drop the group just off a spot beside the tracker, so it snaps.
-    local trackerX, trackerY = centerOf(state, tracker)
-    local spotY = trackerY - tracker.height / 2 - 20 - bar.height / 2
-    state.shift = true
-    dropAt(state, bar, trackerX - tracker.width / 2 + bar.width / 2 + 5, spotY - 6)
-    local newBarX, newBarY = centerOf(state, bar)
-    equal(newBarY, math.floor(spotY + 0.5), "the group snapped")
-    equal(select(1, centerOf(state, counter)) - newBarX, gapX, "the counter kept its place beside the bar")
-    equal(select(2, centerOf(state, counter)), newBarY)
-end)
-test("a drop after combat began waits, then snaps and saves the group when combat ends", function()
-    local state = stonesFixture()
-    state.slash("unlock")
-    local bar, counter = state.env.GrimoireStones, state.wtf.shardCounter
-    dropAt(state, bar, 400, 300)
-    local barX, barY = centerOf(state, bar)
-    dropAt(state, counter, barX + bar.width / 2 + 20 + counter.width / 2, barY)
-    local gapX = select(1, centerOf(state, counter)) - barX
-    local saved = state.wtf.db.shards.counterPosition
-    state.shift = true
-    bar.scripts.OnDragStart(bar)
-    bar:ClearAllPoints()
-    bar:SetPoint("CENTER", nil, "BOTTOMLEFT", 200, 600)
-    state.combat = true
-    bar.scripts.OnDragStop(bar)
-    equal(state.wtf.db.shards.counterPosition, saved, "nothing saved in combat")
-    state.combat = false
-    state.emit("PLAYER_REGEN_ENABLED")
-    equal(state.wtf.db.shards.counterPosition.relativePoint, "BOTTOMLEFT", "saved once combat ends")
-    equal(select(1, centerOf(state, counter)) - select(1, centerOf(state, bar)), gapX, "the group kept together")
-end)
-test("frames do not drag in combat or while locked", function()
-    local state = stonesFixture()
+    local names = {}
+    for _, entry in ipairs(state.editModeFrames) do
+        names[entry.name] = entry
+        equal(type(entry.default.point), "string", entry.name .. ": a default place for Reset Position")
+    end
+    for _, name in ipairs(EDIT_MODE_NAMES) do
+        equal(names[name] ~= nil, true, name)
+    end
+    equal(#state.editModeFrames, #EDIT_MODE_NAMES, "nothing else")
     local bar = state.env.GrimoireStones
-    bar.scripts.OnDragStart(bar)
-    equal(bar.moving, nil, "locked by default")
-    state.slash("unlock")
-    state.combat = true
-    bar.scripts.OnDragStart(bar)
-    equal(bar.moving, nil, "not in combat")
-    local before = state.wtf.db.stones.position
-    bar.scripts.OnDragStop(bar)
-    equal(state.wtf.db.stones.position, before, "a drop without a drag saves nothing")
+    bar:SetFrameLevel(5)
+    state.editMode(true)
+    local selection = state.wtf.LibEditMode.frameSelections[bar]
+    equal(selection.strata, bar:GetFrameStrata(), "on the bar's strata")
+    equal(selection.level, 105, "above the bar's buttons, so a click selects and never uses a stone")
 end)
 
-test("one lock for every WTF frame, locked by default, with no per-frame switches", function()
-    local state = fixture({db = {stones = {locked = false}, tracker = {locked = false, placeholders = true}}})
+test("one lock for every frame, closed at login; Edit Mode opens it and shows the samples", function()
+    local state = fixture({db = {locked = false, grid = true, stones = {locked = false},
+        tracker = {locked = false, placeholders = true}}})
     local db = state.wtf.db
-    equal(db.locked, true)
-    equal(db.stones.locked, true, "older per-frame locks give way to the one lock")
-    equal(db.tracker.locked, true)
-    equal(db.tracker.placeholders, false)
-    equal(db.shards.counterLocked, true)
-    for _, variable in ipairs({"GRIMOIRE_STONES_LOCKED", "GRIMOIRE_TRACKER_LOCKED", "GRIMOIRE_SHARDS_COUNTER_LOCKED",
-        "GRIMOIRE_TRACKER_PLACEHOLDERS"}) do
-        equal(state.settings[variable], nil, variable .. " is gone")
-    end
-    state.settings.GRIMOIRE_UNLOCKED:SetValue(true)
-    equal(db.locked, false)
-    equal(db.tracker.placeholders, true, "sample rows while unlocked")
-end)
-test("/grim unlock and /grim lock move every WTF frame together", function()
-    local state = fixture()
-    state.slash("unlock")
-    local db = state.wtf.db
-    equal(db.stones.locked, false)
-    equal(db.tracker.locked, false)
-    equal(db.tracker.placeholders, true, "sample rows to drag the tracker by")
-    equal(db.shards.counterLocked, false)
-    contains(state.last(), "All Grimoire frames unlocked: drag them where you want")
-    equal(state.env.GrimoireStones.mover.shown, true, "outlined")
-    equal(state.wtf.shardCounter.mover.shown, true)
-    equal(state.settings.GRIMOIRE_UNLOCKED:GetValue(), true, "the main page's switch follows")
-    state.slash("lock")
-    equal(state.env.GrimoireStones.mover.shown, false)
-    equal(state.wtf.shardCounter.mover.shown, false)
+    equal(db.locked, true, "Edit Mode is never open at login")
+    equal(db.grid, nil, "the grid went with the old unlock")
     equal(db.stones.locked, true)
     equal(db.tracker.locked, true)
     equal(db.tracker.placeholders, false)
     equal(db.shards.counterLocked, true)
-    equal(state.last(), "Grimoire: All Grimoire frames locked.")
+    for _, variable in ipairs({"GRIMOIRE_UNLOCKED", "GRIMOIRE_GRID", "GRIMOIRE_STONES_LOCKED",
+        "GRIMOIRE_TRACKER_LOCKED", "GRIMOIRE_SHARDS_COUNTER_LOCKED", "GRIMOIRE_TRACKER_PLACEHOLDERS"}) do
+        equal(state.settings[variable], nil, variable .. " is gone")
+    end
+    state.editMode(true)
+    equal(db.locked, false)
+    equal(db.stones.locked, false)
+    equal(db.tracker.placeholders, true, "sample rows, so the tracker can be found")
+    equal(db.shards.counterLocked, false)
+    state.editMode(false)
+    equal(db.locked, true)
+    equal(db.tracker.placeholders, false)
 end)
-test("unlocked, a grid shows the screen's center; it follows its switch and the lock", function()
+
+test("/grim unlock and /grim lock say that frames move in Edit Mode", function()
     local state = fixture()
-    equal(state.wtf.grid, nil, "nothing built while locked")
+    state.clear()
     state.slash("unlock")
-    local grid = state.wtf.grid
-    equal(grid.shown, true)
-    equal(grid.mouseDisabled, true, "never takes clicks")
-    -- A 1000 x 800 screen, lines every 32 from the center: 15 + 15 + 12 + 12, then the two center lines.
-    equal(#grid.lines, 56)
-    local center = grid.lines[#grid.lines]
-    equal(center.color[2], 0.2, "the center lines are red")
-    equal(center.height, 2)
-    state.settings.GRIMOIRE_GRID:SetValue(false)
-    equal(grid.shown, false)
-    state.settings.GRIMOIRE_GRID:SetValue(true)
-    equal(grid.shown, true)
+    equal(state.last(), "Grimoire: Move Grimoire's frames in the game's Edit Mode: press Esc, then Edit Mode.")
+    equal(state.wtf.db.locked, true, "nothing unlocks")
     state.slash("lock")
-    equal(grid.shown, false)
+    contains(state.last(), "Edit Mode")
+    state.clear()
+    state.slash("debug_editmode")
+    contains(state.messages[1], "debug_editmode edit mode available=true editing=false frames=10")
+    contains(table.concat(state.messages, "\n"), "Grimoire Stones bar: CENTER CENTER 260.0 -140.0")
 end)
+
+test("a client without Edit Mode: frames stay where they were saved and nothing breaks", function()
+    local state = fixture({noEditMode = true,
+        db = {stones = {position = {point = "TOP", relativePoint = "TOP", x = 5, y = -40}}}})
+    equal(#state.editModeFrames, 0)
+    equal(state.env.GrimoireStones.points[1][1], "TOP", "the saved place")
+    state.clear()
+    state.slash("unlock")
+    equal(state.last(), "Grimoire: This client has no Edit Mode, so Grimoire's frames stay where they are.")
+    state.clear()
+    state.slash("debug_editmode")
+    contains(state.messages[1], "available=false")
+    contains(table.concat(state.messages, "\n"), "Grimoire Stones bar: TOP TOP 5.0 -40.0")
+end)
+
+test("a frame's size change keeps its center and saves the place", function()
+    local state = stonesFixture()
+    local bar = state.env.GrimoireStones
+    state.moveInEditMode(bar, "CENTER", 0, 0)
+    local beforeX, beforeY = state.absCenter(bar)
+    state.settings.GRIMOIRE_STONES_SCALE:SetValue(150)
+    local afterX, afterY = state.absCenter(bar)
+    equal(math.floor(afterX + 0.5), math.floor(beforeX + 0.5), "same center")
+    equal(math.floor(afterY + 0.5), math.floor(beforeY + 0.5))
+    equal(state.wtf.db.stones.position.relativePoint, "BOTTOMLEFT", "saved")
+end)
+
 test("/grim reset moves the Stones bar back, after combat if needed", function()
     local state = stonesFixture({db = {stones = {position = {point = "TOP", relativePoint = "TOP", x = 1, y = 2}}}})
     local bar = state.env.GrimoireStones
@@ -4243,14 +4203,14 @@ test("locked tracker rows let clicks through; unlocked they take the mouse to be
     equal(rows[1].mouseDisabled, true, "a list row while locked")
     equal(state.targetRow.mouseDisabled, true, "the target row while locked")
     equal(state.focusRow.mouseDisabled, true)
-    state.slash("unlock")
+    state.editMode(true)
     equal(state.targetRow.mouseDisabled, false, "unlocked: drag by it")
     equal(rows[1].mouseDisabled, false)
-    state.slash("lock")
+    state.editMode(false)
     equal(state.targetRow.mouseDisabled, true)
     equal(rows[1].mouseDisabled, true)
     state.combat = true
-    state.slash("unlock")
+    state.editMode(true)
     equal(state.targetRow.mouseDisabled, true, "a secure row waits for combat to end")
     state.combat = false
     state.emit("PLAYER_REGEN_ENABLED")
@@ -4259,7 +4219,7 @@ end)
 test("placeholders show sample rows for positioning, out of combat", function()
     local state = trackerFixture({units = {}})
     equal(state.targetRow.shown, false)
-    state.settings.GRIMOIRE_UNLOCKED:SetValue(true)
+    state.editMode(true)
     equal(state.targetRow.shown, true)
     equal(state.focusRow.shown, true)
     equal(state.targetRow.name.text, "Target (sample)")
@@ -4269,7 +4229,7 @@ test("placeholders show sample rows for positioning, out of combat", function()
     equal(rows[1].name.text, "Another mob (sample)")
     equal(listOffset(state), -2 * (ROW_STEP + TARGET_SPACING))
     state.combat = true
-    state.settings.GRIMOIRE_UNLOCKED:SetValue(false)
+    state.editMode(false)
     equal(state.targetRow.shown, true, "secure rows wait for combat to end")
     state.combat = false
     state.emit("PLAYER_REGEN_ENABLED")
@@ -4277,30 +4237,20 @@ test("placeholders show sample rows for positioning, out of combat", function()
     equal(state.drivers[state.targetRow], "[@target,harm,nodead] show; hide")
     equal(#shownRows(state), 0)
 end)
-test("each tracker section drags by its rows unless locked, and /grim reset stacks them again", function()
+test("each tracker section moves in Edit Mode on its own, and /grim reset stacks them again", function()
     local state = trackerFixture({db = {tracker = {position = {point = "CENTER", relativePoint = "BOTTOMLEFT",
         x = 200, y = 300}}}})
-    state.slash("unlock")
-    state.targetRow.scripts.OnDragStart(state.targetRow)
-    equal(state.anchor.moving, true)
-    state.anchor:ClearAllPoints()
-    state.anchor:SetPoint("CENTER", nil, "BOTTOMLEFT", 300, 600)
-    state.targetRow.scripts.OnDragStop(state.targetRow)
+    equal(state.editModeEntry(state.anchor).name, "Grimoire DoT tracker")
+    equal(state.editModeEntry(state.focusAnchor).name, "Grimoire DoT tracker focus")
+    equal(state.editModeEntry(state.list).name, "Grimoire DoT tracker list")
+    state.editMode(true)
+    state.moveInEditMode(state.anchor, "LEFT", 300, 60)
     equal(state.wtf.db.tracker.sections.target.x, 300, "the target section saves its own place")
+    equal(state.wtf.db.tracker.sections.target.relativePoint, "LEFT")
     equal(state.wtf.db.tracker.sections.focus, nil, "the others stay stacked")
-    local listRow = shownRows(state)[1]
-    listRow.scripts.OnDragStart(listRow)
-    equal(state.list.moving, true, "a list row drags the list")
-    state.list:ClearAllPoints()
-    state.list:SetPoint("CENTER", nil, "BOTTOMLEFT", 700, 200)
-    listRow.scripts.OnDragStop(listRow)
+    state.moveInEditMode(state.list, "BOTTOMLEFT", 700, 200)
     equal(state.wtf.db.tracker.sections.list.x, 700)
-    state.focusRow.scripts.OnDragStart(state.focusRow)
-    equal(state.focusAnchor.moving, true, "the focus row drags the focus section")
-    state.focusRow.scripts.OnDragStop(state.focusRow)
-    state.slash("lock")
-    state.targetRow.scripts.OnDragStart(state.targetRow)
-    equal(state.anchor.moving, false)
+    state.editMode(false)
     state.slash("reset")
     equal(state.wtf.db.tracker.position, nil)
     equal(next(state.wtf.db.tracker.sections), nil, "every section stacked again")
@@ -4502,19 +4452,18 @@ test("on Classic with a demon out, login completes, so unlocking shows the DoT t
             equal(state.toolkit.info.addon, "Grimoire", "WTF joined the toolkit")
         end
         equal(pinnedRow(state, "target").name.text ~= "Target (sample)", true, label .. ": no samples while locked")
-        state.slash("unlock")
+        state.editMode(true)
         equal(state.wtf.db.locked, false, label .. ": unlocked")
         equal(pinnedRow(state, "target").shown, true, label .. ": the target sample row")
         equal(pinnedRow(state, "target").name.text, "Target (sample)")
         equal(#shownRows(state), 2, label .. ": the list's sample rows")
         equal(state.env.GrimoireControlRow1.shown, true, label .. ": the Control bar's sample row")
         equal(state.env.GrimoireControlRow1.name.text, "Fear (sample)")
-        equal(state.env.GrimoireControl.mover.shown, true, label .. ": its gold outline, to drag by")
-        state.slash("lock")
+        equal(state.editModeEntry(state.env.GrimoireControl).name, "Grimoire Control bar", label .. ": in Edit Mode")
+        state.editMode(false)
         equal(state.wtf.db.locked, true)
         equal(state.env.GrimoireControlRow1.shown, false, label .. ": locked: the samples go")
         equal(#shownRows(state), 0)
-        equal(state.env.GrimoireControl.mover.shown, false)
     end
 end)
 test("on Classic Era a non-Warlock gets one line and nothing past the class gate", function()
@@ -4583,9 +4532,9 @@ test("a client whose focus is not yet seen gets fallback macros, no Focus box, a
         .. "[harm,nodead,pet:Succubus/Incubus] Seduction")
     equal(state.drivers[focusBox(state)], "hide", "no Focus box")
     equal(focusBox(state).attributes.macrotext1, nil)
-    state.slash("unlock")
+    state.editMode(true)
     equal(state.drivers[focusBox(state)], "hide", "not even unlocked")
-    state.slash("lock")
+    state.editMode(false)
     -- A Banish at your target, with no focus (as on Era): its row starts from the cast.
     castAt(state, BANISH, "nameplate4")
     local row = controlRow(state, 1)
@@ -5283,7 +5232,7 @@ test("tracker names stay on one line in their room, and rows never grow from a l
                     nameplate4 = {name = "Wolf", guid = "Creature-2"},
                 }, db = {tracker = {theme = theme, sizes = {[theme] = sizes}, health = healthText ~= "none",
                     healthText = healthText}}})
-                state.slash("unlock")
+                state.editMode(true)
                 local rows = {pinnedRow(state, "target")}
                 for _, row in ipairs(shownRows(state)) do rows[#rows + 1] = row end
                 local width, height = rows[1].width, rows[1].height
@@ -5303,7 +5252,7 @@ test("tracker names stay on one line in their room, and rows never grow from a l
                 else
                     equal(name.width, width - 12 - reserve, label .. ": the row's whole width")
                 end
-                state.slash("lock")
+                state.editMode(false)
                 state.applyDrivers()
                 equal(pinnedRow(state, "target").name.text, long, label .. ": a long target name")
                 equal(pinnedRow(state, "target").width, width, label .. ": the row does not grow for it")
@@ -7195,13 +7144,14 @@ test("alerts: /grim test shows one line of each kind with a sound; sounds can be
     equal(#quiet.sounds, 0)
 end)
 
-test("alerts: the window takes no mouse while locked, shows samples unlocked, and is repaired on load", function()
+test("alerts: the window never takes the mouse, shows samples in Edit Mode, and is repaired on load", function()
     local state = fixture()
     local holder = state.env.GrimoireAlerts
-    equal(holder.mouseDisabled, true, "never blocks clicks while locked")
-    state.slash("unlock")
-    equal(holder.mouseDisabled, false, "draggable while unlocked")
-    state.slash("lock")
+    equal(holder.mouseDisabled, true, "never blocks clicks on the world")
+    state.editMode(true)
+    equal(holder.mouseDisabled, true, "Edit Mode moves it, not its own mouse")
+    equal(holder.shown, true)
+    state.editMode(false)
     local repaired = fixture({db = {alerts = {hold = 99, fade = "x", lines = 0, scale = 7}}})
     local alerts = repaired.wtf.db.alerts
     equal(alerts.hold, 30)
@@ -7523,15 +7473,16 @@ test("Nightfall: the game plays the Imp chirp for Shadow Trance; the icon's slot
     equal(left, 0)
 end)
 
-test("Nightfall: the icon drags while unlocked and takes no mouse while locked", function()
+test("Nightfall: the icon shows a sample in Edit Mode and never takes the mouse", function()
     local state = fixture()
     local icon = state.env.GrimoireNightfall
     equal(icon.mouseDisabled, true)
-    state.slash("unlock")
-    equal(icon.mouseDisabled, false, "draggable")
-    equal(icon.scripts.OnDragStart ~= nil, true)
-    state.slash("lock")
-    equal(icon.mouseDisabled, true)
+    state.editMode(true)
+    equal(icon.mouseDisabled, true, "Edit Mode moves it, not its own mouse")
+    equal(icon.sample.shown, true, "a dim sample to find it by")
+    equal(icon.scripts.OnDragStart, nil)
+    state.editMode(false)
+    equal(icon.sample.shown, false)
 end)
 
 test("Nightfall: a Forever buff ID is learned out of combat; an encounter delays the change", function()
@@ -7590,9 +7541,9 @@ test("shield: Grimoire hosts the shield display, locked with its other frames", 
     equal(state.wtf.ShieldDisplay.OwnerAddOn(), "Grimoire")
     equal(type(state.wtf.db.shield), "table")
     equal(state.wtf.db.shield.locked, true)
-    state.slash("unlock")
+    state.editMode(true)
     equal(state.wtf.db.shield.locked, false)
-    state.slash("lock")
+    state.editMode(false)
     equal(state.wtf.db.shield.locked, true)
 end)
 
@@ -8092,7 +8043,7 @@ end)
 -- own click) is the one allowed path, in Stones.lua only.
 test("source scan: no chat, emote, or addon-message call anywhere; trade calls only in Stones.lua", function()
     local files = {"Alerts.lua", "Commands.lua", "Control.lua", "Cooldowns.lua", "Core.lua", "Dots.lua", "KeyLabels.lua",
-        "Layout.lua", "Options.lua", "Pet.lua", "Predict.lua", "Probe.lua", "Procs.lua", "Reminders.lua", "Shards.lua",
+        "EditMode.lua", "Options.lua", "Pet.lua", "Predict.lua", "Probe.lua", "Procs.lua", "Reminders.lua", "Shards.lua",
         "Shield.lua", "Stones.lua", "Threat.lua", "Tracker.lua", "Engine/Announce.lua", "Engine/Auras.lua",
         "Engine/ClassData.lua", "Engine/Control.lua", "Engine/DotPredict.lua", "Engine/DotTracker.lua",
         "Engine/HealthBars.lua", "Engine/Macros.lua", "Engine/Owners.lua", "Engine/PlateDots.lua", "Engine/Shim.lua",
@@ -8193,8 +8144,9 @@ test("an installed Dyre's Toolkit is left alone: Grimoire keeps its own engines 
     equal(state.wtf.shared, state.wtf.engine.toolkit, "its own engines")
     equal(state.wtf.shared ~= state.env.DyresToolkit, true)
     equal(state.categories["Grimoire"].parent, nil, "its own top-level settings page")
-    state.slash("unlock")
-    contains(state.messages[#state.messages], "All Grimoire frames unlocked")
+    equal(#state.editModeFrames > 0, true, "its frames are in Edit Mode, through its own copy of LibEditMode")
+    state.editMode(true)
+    equal(state.wtf.db.locked, false, "Edit Mode shows its samples")
 end)
 
 for index, entry in ipairs(tests) do

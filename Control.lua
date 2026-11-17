@@ -112,7 +112,6 @@ local function ApplyAnchor()
 end
 
 local function OnChange()
-    anchor.mover:SetShown(not WTF.db.locked)
     WTF.shared.OutOfCombat(control, ApplyAnchor)
 end
 
@@ -155,8 +154,8 @@ function WTF.InitializeControl()
     anchor:SetMovable(true)
     anchor:SetClampedToScreen(true)
     anchor:EnableMouse(false)
-    anchor.mover = WTF.CreateMover(anchor)
-    WTF.RegisterMovable(anchor, function(position) WTF.db.control.position = position end)
+    WTF.RegisterMovable(anchor, function(position) WTF.db.control.position = position end,
+        {name = "Grimoire Control bar", default = WTF.EditModeDefault(DEFAULT_POINT)})
     Place()
     local color = FOCUS_RED
     if WTF.db.tracker and WTF.db.tracker.panelColors then
@@ -178,8 +177,6 @@ function WTF.InitializeControl()
         markerFor = function() return 0 end,
         keeper = {warn = WTF.Warn},
         tooltip = ShowTooltip,
-        onDragStart = function() WTF.BeginDrag(anchor) end,
-        onDragStop = function() WTF.EndDrag(anchor) end,
         onChange = function()
             if control.available then
                 OnChange()

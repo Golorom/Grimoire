@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.3.0 (2026-11-17)
+
+New files: restart the game client, a /reload is not enough.
+
+Changed
+- Frames move in the game's Edit Mode (Esc, Edit Mode) instead of Grimoire's own unlock. Each shows there under its own name with its sample: Stones bar, shard counter, DoT tracker (target, focus and list parts), Control bar, alerts, reminders, Nightfall icon and shield. Drag it, or select it and type coordinates or nudge it with the arrow keys. Reset Position puts it back. Places saved before carry over, and a frame keeps one place for every Edit Mode layout.
+- A click in Edit Mode selects a frame and never presses one of its buttons.
+- Gone with the old unlock: the gold outlines, the grid, magnetic snapping, Shift-dragging a group, and the main page's unlock and grid switches. `/grim unlock` and `/grim lock` now say where frames move. `/grim reset` still puts every frame back.
+
+Added
+- LibEditMode by p3lim, embedded unmodified in `Libs\LibEditMode` under its own license. Loaded on Forever and retail clients only.
+- `/grim debug_editmode`: each frame's place, size, and whether it shows.
+
 ## 0.2.3 (2026-11-17)
 
 Added

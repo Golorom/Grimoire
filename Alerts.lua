@@ -6,9 +6,8 @@ local _, WTF = ...
 -- Lines are centered with no backdrop (0.2.1, the user's choice after trying
 -- left-aligned lines on a dark panel). The panel stays as a setting: above 0%
 -- opacity it appears with a line and fades with the newest one.
--- Nothing is ever sent to other players. The window takes no mouse while
--- locked, so it never blocks clicks on the world; unlocked, it shows sample
--- lines and an outline to drag.
+-- Nothing is ever sent to other players. The window takes no mouse, so it
+-- never blocks clicks on the world; in Edit Mode it shows sample lines.
 --
 -- WTF.Alert(key, text, level, options): level "info" (white), "warn"
 -- (yellow), or "danger" (red); the same key shows at most once per
@@ -154,9 +153,8 @@ function WTF.RefreshAlerts()
     if not holder then
         return
     end
+    -- In Edit Mode: shown with sample lines, so it can be found and moved.
     local unlocked = not WTF.db.locked
-    holder.mover:SetShown(unlocked)
-    holder:EnableMouse(unlocked)
     holder:SetShown(WTF.db.alerts.enabled or unlocked)
     ApplyLook()
     if unlocked and not alerts.samples then
@@ -274,11 +272,9 @@ function WTF.InitializeAlerts()
     holder:SetSize(HOLDER_WIDTH, WTF.db.alerts.lines * LINE_HEIGHT + HOLDER_PADDING)
     holder:SetClampedToScreen(true)
     holder:SetMovable(true)
-    holder:RegisterForDrag("LeftButton")
-    holder:SetScript("OnDragStart", WTF.BeginDrag)
-    holder:SetScript("OnDragStop", WTF.EndDrag)
-    WTF.RegisterMovable(holder, function(position) WTF.db.alerts.position = position end)
-    holder.mover = WTF.CreateMover(holder)
+    holder:EnableMouse(false)
+    WTF.RegisterMovable(holder, function(position) WTF.db.alerts.position = position end,
+        {name = "Grimoire alerts", default = WTF.EditModeDefault(DEFAULT_POINT)})
     panel = CreateFrame("Frame", "GrimoireAlertsPanel", holder, "BackdropTemplate")
     panel:SetAllPoints()
     panel:SetBackdrop({bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",

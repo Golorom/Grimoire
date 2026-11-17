@@ -309,7 +309,7 @@ function ShieldDisplay.SetupSoundMenu(initializer)
 end
 
 -- Settings with defaults, repaired so a damaged or older table cannot break it.
--- Locked by default: unlocked, the ring takes the mouse to be dragged.
+-- Locked by default: in Edit Mode ("unlocked") the samples show.
 function ShieldDisplay.Sanitize(settings)
     settings = type(settings) == "table" and settings or {}
     local position = settings.position
@@ -618,8 +618,7 @@ function ShieldDisplay.Refresh()
     -- An adopted ring is the host's to place, size, and outline.
     if not frame.adopted then
         ScaleFromCenter(settings.scale / 100)
-        frame:EnableMouse(not settings.locked)
-        frame.mover:SetShown(not settings.locked)
+        frame:EnableMouse(false)
     end
     -- The number and the icon row keep their own sizes, whatever the crescents'.
     local arcs = frame:GetScale()
@@ -1044,7 +1043,7 @@ local function CreateSample()
 end
 
 -- A plain frame, not a secure one, so it updates and moves in combat. It takes
--- the mouse only while unlocked, so it never blocks clicks on the world.
+-- no mouse, so it never blocks clicks on the world.
 local function CreateRing()
     frame = CreateFrame("Frame", nil, UIParent)
     ShieldDisplay.frame = frame
@@ -1056,7 +1055,6 @@ local function CreateRing()
     if not adopting then
         frame:SetClampedToScreen(true)
         frame:SetMovable(true)
-        frame:RegisterForDrag("LeftButton")
     end
     -- Everything visible sits in one frame whose opacity follows the absorb.
     frame.visible = CreateFrame("Frame", nil, frame)
@@ -1119,39 +1117,11 @@ local function CreateRing()
         frame:Hide()
         return
     end
-    -- A host's layout (Dyre's Toolkit) drags, snaps, and saves the ring;
-    -- without one it moves freely.
+    -- Grimoire: the host's layout puts the ring in Edit Mode, which moves it;
+    -- the ring itself takes no mouse.
     if layout then
         layout.register(frame, function(position) Config().position = position end)
     end
-    frame:SetScript("OnDragStart", function(self)
-        if Config().locked then
-            return
-        end
-        if layout then
-            layout.beginDrag(self)
-        else
-            self:StartMoving()
-        end
-    end)
-    frame:SetScript("OnDragStop", function(self)
-        if layout then
-            layout.endDrag(self)
-            return
-        end
-        self:StopMovingOrSizing()
-        local point, _, relativePoint, x, y = self:GetPoint()
-        Config().position = {point = point, relativePoint = relativePoint, x = x, y = y}
-    end)
-    -- While unlocked: a gold outline and a hint, so the sample reads as movable.
-    frame.mover = CreateFrame("Frame", nil, frame, "BackdropTemplate")
-    frame.mover:SetAllPoints()
-    frame.mover:SetBackdrop({edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border", edgeSize = 12})
-    frame.mover:SetBackdropBorderColor(1, 0.82, 0)
-    frame.mover.hint = frame.mover:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    frame.mover.hint:SetPoint("BOTTOM", frame.mover, "TOP", 0, 4)
-    frame.mover.hint:SetText(host.unlockHint or "Drag to move")
-    frame.mover:Hide()
     frame:Hide()
     -- Sized before it is placed, so a saved place (in the ring's own scaled
     -- units, as it was saved) lands where it was.
@@ -1287,13 +1257,11 @@ end
 
 -- options: settings = function returning the host's saved settings table
 -- (from ShieldDisplay.Sanitize); report = function(message) for chat;
--- unlockHint = optional text shown above the ring while it is unlocked;
 -- missingSounds = optional function the display calls instead of its own
 -- chat line when Dyre's Sounds is missing, so a host says it once for all its
 -- sounds (author-approved: one line per AddOn);
--- layout = optional {register(frame, save), beginDrag(frame), endDrag(frame)}
--- that moves the ring with the host's other frames (Dyre's Toolkit's
--- RegisterMovable, BeginDrag, EndDrag); save(position) stores
+-- layout = optional {register(frame, save)} that moves the ring with the
+-- host's other frames (Grimoire: into Edit Mode); save(position) stores
 -- {point, relativePoint, x, y} against UIParent. Or (version 10)
 -- layout = {adopt(frame), resetPosition(frame)}: the host makes the built ring
 -- its own (a Dyre's Toolkit widget, sized SIZE at DEFAULT_PLACE, with the

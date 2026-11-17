@@ -117,9 +117,10 @@ local REQUIRED_NAMESPACE = {
     "ParseCommand", "HandleCommand",
     "CheckShardCapabilities", "InitializeShards", "ReportShardStatus", "ReportShardDebug",
     "RefreshShardCounter", "ResetShardCounterPosition",
-    "CheckStoneCapabilities", "InitializeStones", "ResetStonesPosition", "ReportStoneDebug", "RefreshStonesMover",
+    "CheckStoneCapabilities", "InitializeStones", "ResetStonesPosition", "ReportStoneDebug",
     "ReportStoneStatus", "RemindStones", "ApplyStoneMacros", "AddInputHandler", "RunOnNextInput",
-    "Warn", "RegisterMovable", "BeginDrag", "EndDrag", "ScaleKeepingCenter",
+    "Warn", "RegisterMovable", "BeginDrag", "EndDrag", "ScaleKeepingCenter", "ShowEditModeHelp",
+    "ReportEditModeDebug", "EditModeDefault",
     "CharacterMacrosAvailable", "WriteCharacterMacro",
     "DeleteCharacterMacro", "ApplyControlMacros",
     "InitializeControl", "RefreshControl", "ResetControlPosition", "ReportControlDebug", "SanitizeControl",
@@ -573,9 +574,9 @@ function WTF.SanitizeDB(db)
         plateDiesX = WTF.SanitizeWhole(predict.plateDiesX, WTF.DIES_OFFSET_MIN, WTF.DIES_OFFSET_MAX, 0),
         plateDiesY = WTF.SanitizeWhole(predict.plateDiesY, WTF.DIES_OFFSET_MIN, WTF.DIES_OFFSET_MAX, 0),
     }
-    -- One lock for every frame (author-approved, as MTF), locked by default;
-    -- each frame reads its own copy, and the tracker shows its sample rows
-    -- while unlocked, since it can only be dragged while it shows.
+    -- One lock for every frame, open only while Edit Mode is (0.3.0); each
+    -- frame reads its own copy, and the tracker shows its sample rows then,
+    -- so it can be found and moved.
     if WTF.SanitizeControl then
         db.control = WTF.SanitizeControl(db.control, SanitizePosition)
     end
@@ -597,8 +598,10 @@ function WTF.SanitizeDB(db)
     if WTF.SanitizeDiagnostics then
         db.diagnostics = WTF.SanitizeDiagnostics(db.diagnostics)
     end
-    db.locked = db.locked ~= false
-    db.grid = db.grid ~= false
+    -- Frames show their samples only while Edit Mode is open (0.3.0), and it
+    -- is never open at login. The grid went with WTF's own unlock.
+    db.locked = true
+    db.grid = nil
     db.stones.locked = db.locked
     db.tracker.locked = db.locked
     if db.shield then
@@ -668,90 +671,8 @@ local function InstallInputHooks()
     WorldFrame:HookScript("OnMouseDown", OnInput)
 end
 
--- While unlocked, a frame shows a gold outline and a hint (author-approved).
--- A plain child, so it can show and hide also in combat.
-function WTF.CreateMover(frame)
-    local mover = CreateFrame("Frame", nil, frame, "BackdropTemplate")
-    -- On its frame's strata, so the outline is never under what covers it.
-    mover:SetFrameStrata(frame:GetFrameStrata())
-    mover:SetPoint("TOPLEFT", -4, 4)
-    mover:SetPoint("BOTTOMRIGHT", 4, -4)
-    mover:SetBackdrop({edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border", edgeSize = 14})
-    mover:SetBackdropBorderColor(1, 0.82, 0)
-    mover.hint = mover:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    mover.hint:SetPoint("BOTTOM", mover, "TOP", 0, 2)
-    mover.hint:SetText("Drag to move. /grim lock when done")
-    mover:SetShown(not WTF.db.locked)
-    return mover
-end
-
--- While unlocked, an alignment grid over the screen (author-approved, as
--- MTF's): faint lines every GRID_SPACING from the center out, and the center
--- lines in red, so frames line up with the middle of the screen. Under every
--- frame, it takes no mouse. Rebuilt when the screen size or UI scale changes.
-local GRID_SPACING = 32
-local GRID_LINE = {1, 1, 1, 0.12}
-local GRID_CENTER = {1, 0.2, 0.2, 0.7}
-local grid
-
-local function GridLine(vertical, offset, color, thickness)
-    local line = grid:CreateTexture(nil, "BACKGROUND")
-    line:SetColorTexture(color[1], color[2], color[3], color[4])
-    if vertical then
-        line:SetPoint("TOP", grid, "TOP", offset, 0)
-        line:SetPoint("BOTTOM", grid, "BOTTOM", offset, 0)
-        line:SetWidth(thickness)
-    else
-        line:SetPoint("LEFT", grid, "LEFT", 0, offset)
-        line:SetPoint("RIGHT", grid, "RIGHT", 0, offset)
-        line:SetHeight(thickness)
-    end
-    grid.lines[#grid.lines + 1] = line
-end
-
-local function BuildGrid()
-    for _, line in ipairs(grid.lines) do
-        line:Hide()
-    end
-    grid.lines = {}
-    local halfWidth, halfHeight = UIParent:GetWidth() / 2, UIParent:GetHeight() / 2
-    for step = 1, math.floor(halfWidth / GRID_SPACING) do
-        GridLine(true, step * GRID_SPACING, GRID_LINE, 1)
-        GridLine(true, -step * GRID_SPACING, GRID_LINE, 1)
-    end
-    for step = 1, math.floor(halfHeight / GRID_SPACING) do
-        GridLine(false, step * GRID_SPACING, GRID_LINE, 1)
-        GridLine(false, -step * GRID_SPACING, GRID_LINE, 1)
-    end
-    GridLine(true, 0, GRID_CENTER, 2)
-    GridLine(false, 0, GRID_CENTER, 2)
-    grid.built = true
-end
-
-function WTF.RefreshGrid()
-    local wanted = not WTF.db.locked and WTF.db.grid
-    if not grid then
-        if not wanted then
-            return
-        end
-        grid = CreateFrame("Frame", nil, UIParent)
-        grid:SetAllPoints(UIParent)
-        grid:SetFrameStrata("BACKGROUND")
-        grid:EnableMouse(false)
-        grid.lines = {}
-        grid:SetScript("OnEvent", function() grid.built = false; WTF.RefreshGrid() end)
-        grid:RegisterEvent("DISPLAY_SIZE_CHANGED")
-        grid:RegisterEvent("UI_SCALE_CHANGED")
-    end
-    if wanted and not grid.built then
-        BuildGrid()
-    end
-    grid:SetShown(wanted)
-    WTF.grid = grid
-end
-
--- /grim unlock and /grim lock, and the main page's "Unlock frames to move them":
--- every movable frame together (author-approved, as MTF does).
+-- Edit Mode open: every frame shows its sample so it can be found and moved
+-- (EditMode.lua). Closed: back to normal.
 local function SetLockFlags(locked)
     WTF.db.locked = locked
     WTF.db.stones.locked = locked
@@ -763,38 +684,19 @@ local function SetLockFlags(locked)
     end
 end
 
-function WTF.SetFramesLocked(locked, quiet)
+function WTF.SetFramesLocked(locked)
     SetLockFlags(locked)
     WTF.RefreshTracker()
-    WTF.RefreshStonesMover()
     WTF.RefreshShardCounter()
     WTF.RefreshControl()
     WTF.RefreshAlerts()
     WTF.RefreshReminders()
     WTF.RefreshProcs()
     WTF.ShieldDisplay.Refresh()
-    WTF.RefreshGrid()
-    if quiet then
-        return
-    end
-    if locked then
-        WTF.Report("All Grimoire frames locked.")
-    else
-        WTF.Report("All Grimoire frames unlocked: drag them where you want (Shift-drag moves a snapped group), "
-            .. "then type /grim lock.")
-    end
 end
 
 function WTF.ReportShieldDebug()
     WTF.ShieldDisplay.ReportDebug(WTF.Report)
-end
-
-function WTF.Unlock()
-    WTF.SetFramesLocked(false)
-end
-
-function WTF.Lock()
-    WTF.SetFramesLocked(true)
 end
 
 -- The engines (Engine\, Dyre's Toolkit 2.9.2's): the DoT tracker, the
@@ -964,13 +866,17 @@ events:SetScript("OnEvent", function(self, event, loadedName)
     Start("Cooldown alerts", WTF.InitializeCooldowns)
     Start("Key labels", WTF.InitializeKeyLabels)
     Start("Shield display", function()
+        local place = WTF.ShieldDisplay.DEFAULT_PLACE
         WTF.ShieldDisplay.Initialize({settings = function() return WTF.db.shield end, report = WTF.Report,
-            unlockHint = "Drag to move. /grim lock when done", missingSounds = function() end})
+            missingSounds = function() end,
+            layout = {register = function(frame, save)
+                WTF.RegisterMovable(frame, save, {name = "Grimoire shield",
+                    default = {point = place.point, x = place.x, y = place.y}})
+            end}})
     end)
     Start("Diagnostics", function()
         WTF.InitializeProbe()
         WTF.StartDiagnostics()
     end)
     Start("Settings", WTF.InitializeOptions)
-    Start("Grid", WTF.RefreshGrid)
 end)
