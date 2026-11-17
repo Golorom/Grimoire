@@ -515,6 +515,40 @@ local function AddPredictSection(page, layout)
     channels:SetParentInitializer(enabled, function() return WTF.db.predict.enabled end)
 end
 
+-- Grimoire: when to start casting a DoT again (Recast.lua).
+local function AddRecastSection(page, layout)
+    Heading(layout, "Recast cue", "A pulsing mark on a DoT's slot when it is time to start casting it again.")
+    local function Refresh()
+        WTF.RefreshRecast()
+    end
+    local enabled = Flag(page, "GRIMOIRE_RECAST_ENABLED", "Mark a DoT when it is time to recast", "recast", "enabled",
+        true,
+        "A DoT with a cast time has to be started before the old one runs out. The DoT's slot on the tracker "
+            .. "pulses when its time left is the spell's cast time plus your lead time, so a cast started then "
+            .. "lands as the old one ends. An instant DoT pulses one lead time before it ends. Timed from your "
+            .. "own casts, so it needs DoT prediction available." .. PREDICT_NEEDS, Refresh)
+    local setting = Proxy(page, "GRIMOIRE_RECAST_LEAD", Settings.VarType.Number, "Lead time", WTF.DEFAULT_RECAST_LEAD,
+        function() return WTF.db.recast.lead end,
+        function(value)
+            WTF.db.recast.lead = WTF.SanitizeWhole(value, WTF.RECAST_LEAD_MIN, WTF.RECAST_LEAD_MAX,
+                WTF.DEFAULT_RECAST_LEAD)
+            Refresh()
+        end)
+    local lead = Settings.CreateSlider(page, setting,
+        SliderOptions(WTF.RECAST_LEAD_MIN, WTF.RECAST_LEAD_MAX, 1, function(value)
+            return string.format("%.1f s", value / 10)
+        end),
+        "How much earlier than the cast time the mark appears: your reaction time and your lag. Too long and "
+            .. "the new DoT lands before the old one's last tick.")
+    AddDefaultTick(lead, WTF.RECAST_LEAD_MIN, WTF.RECAST_LEAD_MAX, WTF.DEFAULT_RECAST_LEAD)
+    lead:SetParentInitializer(enabled, function() return WTF.db.recast.enabled end)
+    for _, initializer in ipairs({enabled, lead}) do
+        if type(initializer.AddModifyPredicate) == "function" then
+            initializer:AddModifyPredicate(function() return WTF.PredictAvailable() end)
+        end
+    end
+end
+
 -- Sections (author): General (what every panel shares) first, then one per
 -- panel: Target, Focus, and Others; then DoT damage prediction.
 local function AddTrackerPage(parent)
@@ -614,6 +648,7 @@ local function AddTrackerPage(parent)
     end
     AddCurseSection(page, layout)
     AddPredictSection(page, layout)
+    AddRecastSection(page, layout)
 end
 
 -- One color per slot, shared by the tracker's bars and the nameplate dots.

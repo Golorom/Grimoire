@@ -15,6 +15,7 @@ One action reaches another player, and only on your click: a left-click on the H
 - **Soul Shards.** Deletes shards that Drain Soul or Shadowburn create above your limit (your soul bag's size, or a number you set). Shards you had, bought or moved in are never deleted. A counter shows how many you carry.
 - **Stones.** A bar with Soulstone and Healthstone buttons: left-click uses, right-click creates. Reminders when none is up.
 - **DoT tracker.** A row per mob you have DoTs on, with the time left on your Curse, Bane, Corruption, Immolate, Siphon Life and Fear. Optional dots under nameplates.
+- **Recast cue.** A DoT's slot on the tracker pulses when it is time to start casting it again: when its time left is the spell's cast time plus a lead time you set, so the new one lands as the old one ends.
 - **Predict.** Shows the damage your DoTs will still do on the target's health bar, and DIES when they will finish the mob. While you channel Wrack it counts the faster ticks (built ahead of the talent; not yet checked in game).
 - **Control bar.** Timers for the mobs you Fear or Banish, with `! Fear`, `! Banish`, `! Seduction` and `! Curse` macros kept up to date in your macro list.
 - **Alert window.** Short lines in a window of their own: centered text, no backdrop by default.

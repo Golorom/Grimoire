@@ -773,6 +773,10 @@ function DyresToolkit.CreateDotTracker(spec)
             placeholder:SetTexCoord(0.07, 0.93, 0.07, 0.93)
             placeholder:SetDesaturated(true)
             placeholder:SetAlpha(PLACEHOLDER_ALPHA)
+            -- Grimoire: each slot's own icon by its key, so the recast cue
+            -- (Recast.lua) can lay its mark over a slot.
+            row.slotIcons = row.slotIcons or {}
+            row.slotIcons[slot.key] = placeholder
             if IsCompact() then
                 PlaceSlot(placeholder, row, position)
             else

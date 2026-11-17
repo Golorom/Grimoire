@@ -4,7 +4,7 @@ Grimoire is plain Lua 5.1 for the WoW Forever client. No build step, no librarie
 
 ## Layers
 
-1. **Engine** (`Engine\`): 12 files copied unmodified from Dyre's Toolkit, plus `Shim.lua`. The only change in each engine file is line 2, which points it at Grimoire's private namespace (`addon.engine`) instead of the `DyresToolkit` global. One exception: `DotPredict.lua` also carries Grimoire's tick-rate channels (Wrack), every line of it marked `Grimoire`. Do not edit engine files otherwise; see UPSTREAM.md.
+1. **Engine** (`Engine\`): 12 files copied unmodified from Dyre's Toolkit, plus `Shim.lua`. The only change in each engine file is line 2, which points it at Grimoire's private namespace (`addon.engine`) instead of the `DyresToolkit` global. Two exceptions, every line of them marked `Grimoire`: `DotPredict.lua` carries the tick-rate channels (Wrack), and `DotTracker.lua` keeps each slot's icon by name for the recast cue. Do not edit engine files otherwise; see UPSTREAM.md.
 2. **Core** (`Core.lua`, `Commands.lua`, `Layout.lua`): saved settings and their repair on load, the login sequence, slash commands, frame movers and the unlock grid.
 3. **Features**: one file each. A feature file defines `WTF.Sanitize<Name>` for its settings, `WTF.Initialize<Name>` for login, and usually `WTF.Refresh<Name>` and `WTF.Report<Name>Debug`.
 4. **Options** (`Options.lua`): the settings pages, built on the game's Settings API.

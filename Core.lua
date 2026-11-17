@@ -140,6 +140,7 @@ local REQUIRED_NAMESPACE = {
     "SanitizeThreat", "InitializeThreat", "SanitizePet", "InitializePet", "RefreshPetTaunt",
     "QuietTime", "ForgetAlerts",
     "SanitizeProcs", "InitializeProcs", "RefreshProcs", "ResetProcsPosition",
+    "SanitizeRecast", "InitializeRecast", "RefreshRecast", "RecastCues", "ReportRecastDebug",
     "SanitizeCooldowns", "InitializeCooldowns",
     "SanitizeKeyLabels", "InitializeKeyLabels", "RefreshKeyLabels",
 }
@@ -586,6 +587,7 @@ function WTF.SanitizeDB(db)
         db.threat = WTF.SanitizeThreat(db.threat)
         db.pet = WTF.SanitizePet(db.pet)
         db.procs = WTF.SanitizeProcs(db.procs, SanitizePosition)
+        db.recast = WTF.SanitizeRecast(db.recast)
         db.cooldowns = WTF.SanitizeCooldowns(db.cooldowns)
         db.shield = WTF.ShieldDisplay.Sanitize(db.shield)
     end
@@ -951,6 +953,7 @@ events:SetScript("OnEvent", function(self, event, loadedName)
         -- The predictor first: the DoT tracker's rows draw its damage.
         Start("DoT prediction", WTF.InitializePredict)
         Start("DoT tracker", WTF.InitializeTracker)
+        Start("Recast cue", WTF.InitializeRecast)
         Start("Control bar", WTF.InitializeControl)
         Start("Nameplate dots", WTF.InitializePlateDots)
         Start("Reminders", WTF.InitializeReminders)

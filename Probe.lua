@@ -34,6 +34,15 @@ local casts = {}
 -- whether its lines reach addon code as text, or arrive secret.
 local logText = {seen = 0, secret = 0, kstring = 0}
 
+-- A line's shape with nothing of its content: colors dropped, every run of
+-- letters (any alphabet) to "a", every run of digits to "9". It shows
+-- whether a line carries numbers and how it is punctuated, never a name.
+local function Shape(text)
+    local shape = text:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
+    shape = shape:gsub("[%a\128-\255]+", "a"):gsub("%d+", "9")
+    return shape:sub(1, 120)
+end
+
 local function WatchCombatLogText()
     local frame = rawget(_G, "COMBATLOG") or rawget(_G, "ChatFrame2")
     if type(frame) ~= "table" or type(frame.AddMessage) ~= "function" or type(hooksecurefunc) ~= "function" then
@@ -53,6 +62,11 @@ local function WatchCombatLogText()
             -- apart (0.2.1: the first diagnostics took it for readable).
             if text:find("|K", 1, true) then
                 logText.kstring = logText.kstring + 1
+            else
+                -- 0.2.3: the first v2 session counted every line plain, so
+                -- one line's shape is kept, to learn whether amounts show.
+                local ok, shape = pcall(Shape, text)
+                logText.shape = ok and shape or nil
             end
         end
     end)
@@ -370,7 +384,8 @@ end
 -- false keeps its sample, and the API probes; version 1's counts start over.
 local RECORD_VERSION = 2
 local MAX_FACTS = 150
-local SAMPLE_LIMIT = 40
+-- Long enough for a function's "Usage: ..." error, which names its arguments.
+local SAMPLE_LIMIT = 160
 local COMBAT_INTERVAL = 3
 local COMBAT_SAMPLES = 10
 local FIRST_COMBAT_SAMPLE = 1
@@ -658,6 +673,10 @@ local function Sample()
         end
         if seen - hidden - scrambled > 0 then
             Add("combatlog.plain", "readable", nil, seen - hidden - scrambled)
+            if logText.shape then
+                Add("combatlog.shape", "readable", logText.shape)
+                logText.shape = nil
+            end
         end
     end)
 end
@@ -687,6 +706,14 @@ local function SampleClient()
         end
         for name, value in pairs(triggers) do
             Add("enum.auraSound." .. tostring(name), "readable", tostring(value))
+        end
+    end)
+    -- 0.2.3: the client has this function; what it takes and gives is not
+    -- documented. Called with a Corruption rank, its answer or its usage
+    -- error says which.
+    Try("carryOver.spell", function()
+        if type(C_UnitAuras) == "table" and type(C_UnitAuras.GetRefreshCarryOverDuration) == "function" then
+            Note("carryOver.spell", (C_UnitAuras.GetRefreshCarryOverDuration(172)))
         end
     end)
     Try("imbue.mainHand", function()

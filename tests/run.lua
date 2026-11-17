@@ -36,7 +36,7 @@ local TOOLKIT_FILES = {"Engine/Shim.lua", "Engine/Auras.lua", "Engine/Units.lua"
     "Engine/Control.lua", "Engine/DotTracker.lua", "Engine/PlateDots.lua", "Engine/DotPredict.lua"}
 local TOOLKIT_DIR = ""
 local RUNTIME_FILES = {"Commands.lua", "Core.lua", "Layout.lua", "Shards.lua", "Stones.lua", "Tracker.lua",
-    "Dots.lua", "Predict.lua", "Control.lua", "Alerts.lua", "Reminders.lua", "Threat.lua", "Pet.lua", "Procs.lua",
+    "Dots.lua", "Predict.lua", "Recast.lua", "Control.lua", "Alerts.lua", "Reminders.lua", "Threat.lua", "Pet.lua", "Procs.lua",
     "Cooldowns.lua", "KeyLabels.lua", "Shield.lua", "Probe.lua", "Options.lua"}
 local SHARD = 6265
 local SPELLS = {[688] = "Summon Imp", [697] = "Summon Voidwalker", [691] = "Summon Felhunter",
@@ -4817,7 +4817,7 @@ test("the DoT Tracker page: General, then a section per panel with its color and
             names[#names + 1] = heading.heading
         end
     end
-    equal(table.concat(names, ","), "General,Target,Focus,Others,Curse slot,DoT damage prediction")
+    equal(table.concat(names, ","), "General,Target,Focus,Others,Curse slot,DoT damage prediction,Recast cue")
     equal(headings[1].position, 0, "General first")
     equal(page.initializers[1].setting.variable, "GRIMOIRE_TRACKER_THEME", "the shared settings under General")
     for index, case in ipairs({{"TARGET", "ff8787ed"}, {"FOCUS", "ffe61a1a"}, {"LIST", "ff545454"}}) do
@@ -6824,6 +6824,151 @@ test("Wrack on Forever: hidden ticks follow the faster rhythm, are counted for t
     equal(facts["predict.rate.wrack.stop@idle.world"].n, 1)
 end)
 
+-- The recast cue (Grimoire 0.2.3) -------------------------------------------------
+
+local function recastFixture(extra)
+    local state = trackerPredictFixture(extra)
+    state.castTimes = {[6222] = 2000, [980] = 0, [707] = 1500}
+    state.env.C_Spell.GetSpellInfo = function(id)
+        if state.secretCastTime then
+            local hidden = secret()
+            state.secrets[hidden] = true
+            return {castTime = hidden}
+        end
+        return {castTime = state.castTimes[id]}
+    end
+    for _, frame in ipairs(state.frames) do
+        if frame.unitEvents and frame.unitEvents.UNIT_SPELLCAST_START and frame.unitEvents.UNIT_SPELLCAST_FAILED
+                and frame.events.PLAYER_TARGET_CHANGED and not frame.events.UNIT_COMBAT then
+            state.recastFrame = frame
+        end
+    end
+    -- The cue's clock, as the game runs it while a DoT is timed.
+    function state.recastTick()
+        local onUpdate = state.recastFrame.scripts.OnUpdate
+        if onUpdate then onUpdate(state.recastFrame, 0.2) end
+    end
+    function state.cues()
+        local list = {}
+        for _, cue in ipairs(state.wtf.RecastCues()) do list[#list + 1] = cue.family end
+        table.sort(list)
+        return table.concat(list, ",")
+    end
+    function state.marks()
+        local shown = {}
+        for _, frame in ipairs(state.frames) do
+            if frame.region and frame.fill and frame.edges and frame.shown then shown[#shown + 1] = frame end
+        end
+        return shown
+    end
+    function state.castDot(spellID, name)
+        state.emit("UNIT_SPELLCAST_SUCCEEDED", "player", "cast", spellID)
+        apply(state, spellID, name)
+    end
+    return state
+end
+
+test("recast cue: Corruption's slot is marked when its time left is the cast time plus the lead, not before", function()
+    local state = recastFixture()
+    assert(state.recastFrame, "the cue's frame")
+    equal(state.recastFrame.scripts.OnUpdate, nil, "no clock while nothing is timed")
+    state.castDot(6222, "Corruption")
+    equal(type(state.recastFrame.scripts.OnUpdate), "function", "the clock runs from your cast")
+    -- 15 s; a 2 s cast and the 0.5 s lead: due with 2.5 s left.
+    state.now = state.now + 12.4
+    state.recastTick()
+    equal(state.cues(), "", "2.6 s left")
+    equal(#state.marks(), 0)
+    state.now = state.now + 0.2
+    state.recastTick()
+    equal(state.cues(), "corruption", "2.4 s left")
+    local marks = state.marks()
+    equal(#marks, 1)
+    local icon = state.wtf.DotTracker().pinned.target.slotIcons.corruption
+    assert(icon, "the engine names each slot's icon")
+    equal(marks[1].region, icon, "laid over the slot's icon")
+    equal(marks[1].parent, state.env.UIParent, "the cue's own frame, not the tracker's")
+    -- Recast: the mark goes at once, and stays gone with the new DoT.
+    state.castDot(6222, "Corruption")
+    equal(state.cues(), "")
+    equal(#state.marks(), 0)
+    state.recastTick()
+    equal(state.cues(), "", "15 s again")
+    state.now = state.now + 12.6
+    state.recastTick()
+    equal(state.cues(), "corruption", "and due again in its turn")
+end)
+
+test("recast cue: hidden while you cast that spell at that mob, back if the cast fails", function()
+    local state = recastFixture()
+    state.castDot(6222, "Corruption")
+    state.now = state.now + 13
+    state.recastTick()
+    equal(state.cues(), "corruption")
+    state.emit("UNIT_SPELLCAST_START", "player", "cast-2", 6222)
+    equal(state.cues(), "", "you are on it")
+    state.emit("UNIT_SPELLCAST_INTERRUPTED", "player", "cast-2", 6222)
+    equal(state.cues(), "corruption", "interrupted: still due")
+    -- Casting something else does not hide it.
+    state.emit("UNIT_SPELLCAST_START", "player", "cast-3", 686)
+    equal(state.cues(), "corruption")
+end)
+
+test("recast cue: an instant DoT is marked one lead time before it ends; the lead is a setting", function()
+    local state = recastFixture()
+    state.castDot(980, "Curse of Agony")
+    state.now = state.now + 23.4
+    state.recastTick()
+    equal(state.cues(), "", "0.6 s left")
+    state.now = state.now + 0.2
+    state.recastTick()
+    equal(state.cues(), "agony", "0.4 s left")
+    local icon = state.wtf.DotTracker().pinned.target.slotIcons.bane
+    equal(state.marks()[1].region, icon, "Agony is the Bane slot")
+    state.settings.GRIMOIRE_RECAST_LEAD:SetValue(0)
+    equal(state.wtf.db.recast.lead, 0)
+    equal(state.cues(), "", "no lead: only as it ends")
+    state.settings.GRIMOIRE_RECAST_LEAD:SetValue(20)
+    equal(state.cues(), "agony")
+    state.settings.GRIMOIRE_RECAST_LEAD:SetValue(99)
+    equal(state.wtf.db.recast.lead, 20, "kept in range")
+    state.settings.GRIMOIRE_RECAST_ENABLED:SetValue(false)
+    equal(state.cues(), "")
+    equal(#state.marks(), 0)
+end)
+
+test("recast cue: a cast time the game hides in combat stands at its last readable value; the mark goes with the DoT", function()
+    local state = recastFixture()
+    state.castDot(6222, "Corruption")
+    state.recastTick() -- read once while readable
+    state.secretCastTime = true
+    state.now = state.now + 12.6
+    state.recastTick()
+    equal(state.cues(), "corruption", "still 2 s")
+    state.clear()
+    state.slash("debug_recast")
+    contains(state.messages[1], "debug_recast enabled=true lead=0.5s predictor=true tracker=true marks=1 shown=1")
+    contains(state.messages[2], "target corruption (spell 6222): 2.4s left, cast 2.0s (last readable), cue now")
+    -- The DoT runs out: the predictor forgets it, the mark goes, the clock stops.
+    state.now = state.now + 3
+    state.runTimers()
+    state.recastTick()
+    equal(state.cues(), "")
+    equal(#state.marks(), 0)
+    state.recastTick()
+    equal(state.recastFrame.scripts.OnUpdate, nil, "no clock with nothing timed")
+end)
+
+test("recast cue: settings are repaired, on by default with a 0.5 s lead", function()
+    local state = recastFixture({db = {tracker = {health = true}, recast = {enabled = "yes", lead = "soon"}}})
+    equal(state.wtf.db.recast.enabled, true)
+    equal(state.wtf.db.recast.lead, 5)
+    local off = recastFixture({db = {tracker = {health = true}, recast = {enabled = false, lead = 12}}})
+    equal(off.wtf.db.recast.enabled, false)
+    equal(off.wtf.db.recast.lead, 12)
+    equal(state.settings.GRIMOIRE_RECAST_ENABLED.name, "Mark a DoT when it is time to recast")
+end)
+
 -- Dyre's Toolkit's shared files and engines (WTF 1.4.1, 1.5.0) -------------------
 
 
@@ -7898,11 +8043,12 @@ test("diagnostics: a readable false keeps its sample; scrambled combat log lines
     state.combat = true
     state.emit("PLAYER_REGEN_DISABLED")
     log:AddMessage("|Kq12|k hits |Kq13|k for 10.")
-    log:AddMessage("Plain line.")
+    log:AddMessage("|cffff0000Your|r Corruption hits Boar for 12 Shadow. (3 resisted)")
     passTime(state, 4)
     endFight(state)
     equal(facts["combatlog.scrambled@combat.world"].readable, 1)
     equal(facts["combatlog.plain@combat.world"].readable, 1)
+    equal(facts["combatlog.shape@combat.world"].sample, "a a a a a 9 a. (9 a)", "the line's shape, none of its words")
     equal(facts["combatlog.text@combat.world"], nil, "the old misleading check is gone")
 end)
 
@@ -7919,6 +8065,15 @@ test("diagnostics: once per login, which probed functions this client has", func
     equal(facts["enum.auraSound.Removed@idle.world"].sample, "1")
     equal(facts["imbue.mainHand@idle.world"].sample, "false")
     equal(facts["pet.healthPercent@idle.world"].readable, 1)
+    equal(facts["carryOver.spell@idle.world"], nil, "not in this client")
+    -- A function that refuses its arguments says how it wants them.
+    local usage = diagnosticsFixture({prepareEnv = true})
+    usage.env.C_UnitAuras.GetRefreshCarryOverDuration = function()
+        error("bad argument #1 (Usage: local seconds = C_UnitAuras.GetRefreshCarryOverDuration(unit, auraInstanceID))", 0)
+    end
+    passTime(usage, 10)
+    contains(diagnosticFacts(usage)["carryOver.spell@idle.world"].sample, "GetRefreshCarryOverDuration(unit, auraInstanceID)",
+        "the whole usage line is kept")
 end)
 
 test("reminders: Forever's Summon Incubus, found by name, counts as your last demon", function()

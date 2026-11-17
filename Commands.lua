@@ -4,7 +4,7 @@ local USAGE = "Use /grim, /grim test (sample alerts), /grim shards, /grim stones
     .. "/grim reset, /grim reset_focus, or for testing /grim debug_log, debug_log_save, debug_log_reset, debug_checks, "
     .. "debug_restrictions, debug_alerts, debug_reminders, "
     .. "debug_threat, debug_pet, debug_procs, debug_cooldowns, debug_shield, debug_shards, debug_stones, "
-    .. "debug_tracker, debug_predict, debug_control."
+    .. "debug_tracker, debug_predict, debug_recast, debug_control."
 local UNAVAILABLE = "Grimoire is unavailable. Check its login message."
 
 -- Each command is one word; "" opens the settings. Handlers live in the other
@@ -25,6 +25,7 @@ local COMMANDS = {
     debug_stones = {handler = "ReportStoneDebug"},
     debug_tracker = {handler = "ReportTrackerDebug", always = true},
     debug_predict = {handler = "ReportPredictDebug"},
+    debug_recast = {handler = "ReportRecastDebug"},
     debug_control = {handler = "ReportControlDebug"},
     test = {handler = "TestAlerts"},
     debug_checks = {handler = "ReportForeverChecks", always = true},

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.3 (2026-11-17)
+
+Added
+- Recast cue: a DoT's slot on the tracker pulses when it is time to start casting it again, that is when its time left is the spell's cast time plus a lead time (0.5 s; DoT Tracker page). An instant DoT pulses one lead time before it ends. Hidden while you cast that spell at that mob. The time left is Predict's own clock from your casts, since addon code cannot read the tracker's timers; the cast time is the game's, so talents count. `/grim debug_recast` shows the numbers.
+- Diagnostics: one combat log line's shape (letters and digits masked), a probe of the refresh carry-over function, and room for a function's whole usage error.
+
 ## 0.2.2 (2026-11-17)
 
 Added

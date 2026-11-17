@@ -20,7 +20,8 @@ Client 1.60.1 build 70938, open world only, 2026-11-16, by Grimoire's background
 | `UnitHealth("pet")` | secret | secret |
 | Aura reads on any unit (`C_UnitAuras.*`) | refused | readable |
 | Combat log events | not delivered | not delivered |
-| Combat log chat tab lines | not flagged secret; documented as scrambled KStrings | same |
+| `UnitHealthPercent("pet", ...)` | secret | secret |
+| Combat log chat tab lines | plain strings, no KString marker (22 lines, 2026-11-17); content not yet looked at | same |
 
 The game's own predicates (`C_Secrets.ShouldAurasBeSecret`, `ShouldSpellCooldownBeSecret`, `ShouldUnitThreatStateBeSecret`) agreed with the samples every time.
 
@@ -34,16 +35,16 @@ Also confirmed in game on 2026-11-15: saved variables write and load; mob GUIDs 
 - Real cooldown state in combat is closed. The game's Cooldown Manager and its alerts know it; addon code does not.
 - A demon's health cannot drive a line or a sound. It can drive a display through the game (see below).
 - Auras in combat can only be shown through the game's aura containers and aura sounds (`C_UnitAuras.AddAuraSound`), as the DoT tracker and the Nightfall cue do.
-- Do not parse the combat log tab.
+- The combat log tab: Blizzard documents its lines as scrambled KStrings, but the lines sampled here were plain strings. Whether they carry amounts is being checked (`combatlog.shape` in the diagnostics keeps one line's shape, letters and digits masked). Do not build on it until that is read.
 
-## Documented, not yet tested here
+## Present in the client, not yet used
 
-The diagnostics probe for these once per login (`api.*` facts in `/grim debug_log`):
+All of these exist on client 1.60.1 (probed 2026-11-17, `api.*` facts in `/grim debug_log`), as do `C_CooldownViewer`, `C_DamageMeter`, `C_CombatAudioAlert`, `C_UnitAuras.AddAuraSound` and `C_EditMode.GetLayouts`. `Enum.UnitAuraSoundTrigger` has Added, ApplicationsIncreased and Removed.
 
 - `UnitHealthPercent(unit, usePredicted, curve)` with a curve from `C_CurveUtil`: turns a health percent into a number or color inside the game; the result can go to `SetAlpha` or a color setter. A "demon low" icon would use this.
 - `C_VoiceChat.SpeakText`: text to speech, heard only by you.
-- `C_Item.GetWeaponEnchantInfo` (Forever): temporary weapon enchants, for a Firestone or Spellstone reminder.
-- `C_UnitAuras.GetRefreshCarryOverDuration` (Forever): time a recast would carry over.
+- `C_Item.GetWeaponEnchantInfo` (Forever): temporary weapon enchants, for a Firestone or Spellstone reminder. It needs an argument (called with none it raised a usage error); the next diagnostics keep the whole usage line.
+- `C_UnitAuras.GetRefreshCarryOverDuration` (Forever): time a recast would carry over. Arguments unknown; probed with a spell ID (`carryOver.spell`). The recast cue would add this time to its lead.
 - `Enum.UnitAuraSoundTrigger`: which aura sound triggers exist besides Added.
 
 ## Client rules that bit us
