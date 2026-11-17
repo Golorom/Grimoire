@@ -7,8 +7,11 @@ local _, WTF = ...
 --   time left on the DoT  <=  the spell's cast time  +  your lead time
 --
 -- so a cast started at the cue lands about as the old DoT ends. An instant
--- DoT is marked one lead time before it ends. The mark goes when the DoT is
--- recast or gone, and while you are casting that spell at that mob.
+-- DoT (0.3.9) is marked as it runs out, after its last tick: recast earlier,
+-- it loses that tick, and Bane of Agony's last ticks are its strongest. A DoT
+-- that ran out stays marked until you recast it, for up to LAPSE_HOLD
+-- seconds, while its mob lives. The mark goes while you are casting that
+-- spell at that mob.
 --
 -- Addon code cannot read a DoT's timer on Forever (the game draws the
 -- tracker's timers itself), so the time left is the predictor's own clock:
@@ -35,7 +38,8 @@ WTF.RECAST_LEAD_MIN, WTF.RECAST_LEAD_MAX, WTF.DEFAULT_RECAST_LEAD = 0, 20, 5
 -- Stones buttons (Glow.lua).
 WTF.RECAST_STYLES = {{key = "edges", label = "Yellow edges"}, {key = "glow", label = "Gold glow"}}
 
-local recast = {marks = {}, castSeconds = {}, shown = {}}
+local LAPSE_HOLD = 10
+local recast = {marks = {}, castSeconds = {}, shown = {}, seen = {}, lapsed = {}}
 local frame
 
 -- lead: tenths of a second.
@@ -90,7 +94,68 @@ WTF.RecastFamilyOf = FamilyOf
 local function Due(dot, now)
     local left = dot.applied + dot.duration - now
     local cast = CastSeconds(dot.rank)
+    if cast <= 0 then
+        return left, left, cast
+    end
     return left - cast - WTF.db.recast.lead / 10, left, cast
+end
+
+-- Each timed DoT's end, remembered; one gone from the predictor at or after
+-- its end has run out (one gone before, with its mob's death or a dispel,
+-- has not). A new one of its family ends that.
+local function Track(predictor, now)
+    local seen = {}
+    for key, mob in pairs(predictor and predictor.mobs or {}) do
+        for family, dot in pairs(mob.dots) do
+            seen[key] = seen[key] or {}
+            seen[key][family] = {ends = dot.applied + dot.duration, rank = dot.rank}
+            if recast.lapsed[key] then
+                recast.lapsed[key][family] = nil
+            end
+        end
+    end
+    for key, families in pairs(recast.seen) do
+        for family, last in pairs(families) do
+            if not (seen[key] and seen[key][family]) and now >= last.ends - 0.1 then
+                recast.lapsed[key] = recast.lapsed[key] or {}
+                recast.lapsed[key][family] = last.ends
+            end
+        end
+    end
+    recast.seen = seen
+    for key, families in pairs(recast.lapsed) do
+        for family, ends in pairs(families) do
+            if now - ends > LAPSE_HOLD then
+                families[family] = nil
+            end
+        end
+        if not next(families) then
+            recast.lapsed[key] = nil
+        end
+    end
+end
+
+-- The families due on one mob now: timed DoTs at their cue, and DoTs that
+-- ran out. Not the one you are casting at it.
+local function DueOn(predictor, key, now)
+    local due = {}
+    if not key then
+        return due
+    end
+    local casting = recast.casting
+    local mob = predictor.mobs[key]
+    for family, dot in pairs(mob and mob.dots or {}) do
+        if not dot.doubtful and Due(dot, now) <= 0 then
+            due[family] = true
+        end
+    end
+    for family in pairs(recast.lapsed[key] or {}) do
+        due[family] = true
+    end
+    if casting and casting.key == key then
+        due[casting.family] = nil
+    end
+    return due
 end
 
 local function MakeMark(region)
@@ -161,16 +226,11 @@ local function HotbarWants(predictor, now)
     if not WTF.SetHotbarGroup then
         return
     end
-    if WTF.db.recast.enabled and predictor and type(predictor.Key) == "function" and next(predictor.mobs) then
-        local casting = recast.casting
+    if WTF.db.recast.enabled and predictor and type(predictor.Key) == "function" then
         for _, unit in ipairs({"target", "focus"}) do
-            local key = UnitExists(unit) and predictor.Key(unit)
-            local mob = key and predictor.mobs[key]
-            for family, dot in pairs(mob and mob.dots or {}) do
-                local mine = casting and casting.family == family and casting.key == key
-                if not mine and not dot.doubtful and Due(dot, now) <= 0 then
-                    keys[(unit == "target" and "dot:" or "focus:") .. family] = true
-                end
+            local key = UnitExists(unit) and UnitIsDead(unit) ~= true and predictor.Key(unit)
+            for family in pairs(key and DueOn(predictor, key, now) or {}) do
+                keys[(unit == "target" and "dot:" or "focus:") .. family] = true
             end
         end
     end
@@ -182,22 +242,20 @@ local function Update()
     local predictor = WTF.predictor
     local tracker = WTF.DotTracker and WTF.DotTracker()
     local now = GetTime()
+    Track(predictor, now)
     HotbarWants(predictor, now)
     if not WTF.db.recast.enabled or not predictor or not tracker or type(predictor.Key) ~= "function" then
         HideAll()
         return
     end
     local wanted, shown = {}, {}
-    if next(predictor.mobs) then
-        local casting = recast.casting
+    if next(predictor.mobs) or next(recast.lapsed) then
         for _, entry in ipairs(Rows(tracker, predictor)) do
-            local mob = entry.key and predictor.mobs[entry.key]
             local icons = entry.row.slotIcons
-            if mob and type(icons) == "table" then
-                for family, dot in pairs(mob.dots) do
+            if type(icons) == "table" then
+                for family in pairs(DueOn(predictor, entry.key, now)) do
                     local region = icons[SLOT_OF[family] or ""]
-                    local mine = casting and casting.family == family and casting.key == entry.key
-                    if region and not mine and not dot.doubtful and Due(dot, now) <= 0 and Visible(region) then
+                    if region and Visible(region) then
                         wanted[region] = true
                         shown[#shown + 1] = {key = entry.key, family = family}
                     end
@@ -254,8 +312,10 @@ local function OnUpdate(self, elapsed)
         recast.casting = nil
     end
     -- Nothing timed and nothing marked: the clock stops until your next cast.
+    -- A DoT that just ran out counts, so its end is noted first.
     local predictor = WTF.predictor
-    if (not predictor or not next(predictor.mobs)) and #recast.shown == 0 then
+    Track(predictor, GetTime())
+    if (not predictor or not next(predictor.mobs)) and #recast.shown == 0 and not next(recast.lapsed) then
         if WTF.SetHotbarGroup then
             WTF.SetHotbarGroup("recast", {})
         end
@@ -275,7 +335,12 @@ function WTF.InitializeRecast()
         frame:RegisterUnitEvent(event, "player")
     end
     frame:RegisterEvent("PLAYER_TARGET_CHANGED")
+    frame:RegisterEvent("PLAYER_REGEN_ENABLED")
     frame:SetScript("OnEvent", function(_, event, _, _, spellID)
+        -- A fight's end: what ran out in it is no longer due.
+        if event == "PLAYER_REGEN_ENABLED" then
+            recast.lapsed, recast.seen = {}, {}
+        end
         local predictor = WTF.predictor
         local family = (event == "UNIT_SPELLCAST_START" or event == "UNIT_SPELLCAST_SUCCEEDED") and FamilyOf(spellID)
         if family and not (predictor and type(predictor.Key) == "function") then

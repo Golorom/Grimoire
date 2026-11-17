@@ -7132,22 +7132,35 @@ test("recast cue: hidden while you cast that spell at that mob, back if the cast
     equal(state.cues(), "corruption")
 end)
 
-test("recast cue: an instant DoT is marked one lead time before it ends; the lead is a setting", function()
+test("recast cue: an instant DoT is marked as it runs out, and stays until recast; the lead is for cast times", function()
     local state = recastFixture()
     state.castDot(980, "Curse of Agony")
-    state.now = state.now + 23.4
+    state.now = state.now + 23.6
     state.recastTick()
-    equal(state.cues(), "", "0.6 s left")
-    state.now = state.now + 0.2
+    equal(state.cues(), "", "0.4 s left: its last tick is still to come")
+    state.settings.GRIMOIRE_RECAST_LEAD:SetValue(20)
+    equal(state.cues(), "", "the lead does not move an instant DoT")
+    state.now = state.now + 0.5
     state.recastTick()
-    equal(state.cues(), "agony", "0.4 s left")
+    equal(state.cues(), "agony", "run out")
     local icon = state.wtf.DotTracker().pinned.target.slotIcons.bane
     equal(state.marks()[1].region, icon, "Agony is the Bane slot")
-    state.settings.GRIMOIRE_RECAST_LEAD:SetValue(0)
-    equal(state.wtf.db.recast.lead, 0)
-    equal(state.cues(), "", "no lead: only as it ends")
-    state.settings.GRIMOIRE_RECAST_LEAD:SetValue(20)
-    equal(state.cues(), "agony")
+    -- The predictor forgets it; it stays due until you recast it.
+    state.now = state.now + 1
+    state.runTimers()
+    state.recastTick()
+    equal(state.cues(), "agony", "still due after the predictor let it go")
+    state.castDot(980, "Curse of Agony")
+    state.recastTick()
+    equal(state.cues(), "", "recast")
+    -- Left alone, it stops after a while.
+    state.now = state.now + 24.1
+    state.recastTick()
+    state.now = state.now + 1
+    state.runTimers()
+    state.now = state.now + 10
+    state.recastTick()
+    equal(state.cues(), "", "not due for ever")
     state.settings.GRIMOIRE_RECAST_LEAD:SetValue(99)
     equal(state.wtf.db.recast.lead, 20, "kept in range")
     state.settings.GRIMOIRE_RECAST_ENABLED:SetValue(false)
@@ -7167,14 +7180,30 @@ test("recast cue: a cast time the game hides in combat stands at its last readab
     state.slash("debug_recast")
     contains(state.messages[1], "debug_recast enabled=true lead=0.5s predictor=true tracker=true marks=1 shown=1")
     contains(state.messages[2], "target corruption (spell 6222): 2.4s left, cast 2.0s (last readable), cue now")
-    -- The DoT runs out: the predictor forgets it, the mark goes, the clock stops.
+    -- The DoT runs out: still due until recast, for a while; then the mark
+    -- goes and the clock stops.
     state.now = state.now + 3
     state.runTimers()
+    state.recastTick()
+    equal(state.cues(), "corruption", "ran out: still due")
+    state.now = state.now + 11
     state.recastTick()
     equal(state.cues(), "")
     equal(#state.marks(), 0)
     state.recastTick()
     equal(state.recastFrame.scripts.OnUpdate, nil, "no clock with nothing timed")
+end)
+test("recast cue: a fight's end clears the DoTs that ran out in it", function()
+    local state = recastFixture()
+    state.castDot(6222, "Corruption")
+    state.recastTick()
+    state.now = state.now + 19
+    state.runTimers()
+    state.recastTick()
+    equal(state.cues(), "corruption", "ran out")
+    state.emit("PLAYER_REGEN_ENABLED")
+    state.recastTick()
+    equal(state.cues(), "", "combat over")
 end)
 
 test("recast cue: yellow edges by default, or the Stones buttons' gold glow", function()

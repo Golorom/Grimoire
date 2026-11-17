@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.9 (2026-11-17)
+
+Changed
+- Recast cue for an instant DoT comes as it runs out, after its last tick.
+- A DoT that ran out stays marked until you recast it, up to 10 seconds, until the fight ends.
+
 ## 0.3.8 (2026-11-17)
 
 Added

@@ -48,7 +48,7 @@ One action reaches another player, and only on your click: a left-click on the H
 - **Prep strip.** Optional: the Stones buttons, the shard counter, the reminder icons and the Nightfall icon in one bar. Empty slots show, fade or close up.
 - **Action bar glows.** The button on your own bars glows when it is time: a stone you can make, missing armor or demon, a DoT to recast on your target or focus, Shadow Bolt during Nightfall. Grimoire's own buttons can then be hidden.
 - **DoT tracker.** A row per mob you have DoTs on, with the time left on your Curse, Bane, Corruption, Immolate, Siphon Life and Fear. Dyre's look or a gold rim. Optional dots under nameplates.
-- **Recast cue.** A DoT's slot on the tracker pulses when it is time to start casting it again: when its time left is the spell's cast time plus a lead time you set, so the new one lands as the old one ends.
+- **Recast cue.** A DoT's slot on the tracker pulses when it is time to cast it again. A DoT with a cast time is marked its cast time plus a lead time you set before it ends, so the new one lands as the old one ends. An instant one is marked as it runs out, after its last tick.
 - **Predict.** Shows the damage your DoTs will still do on the target's health bar, in Dyre's stripes or the game's bar texture, and DIES when they will finish the mob. While you channel Wrack it counts the faster ticks (not yet tested in game).
 - **Control bar.** Timers for the mobs you Fear or Banish, with `! Fear`, `! Banish`, `! Seduction` and `! Curse` macros kept up to date in your macro list.
 - **Alert window.** Short lines in a window of their own: centered text, no backdrop by default.

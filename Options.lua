@@ -458,8 +458,9 @@ local function AddRecastSection(page, layout)
         true,
         "A DoT with a cast time has to be started before the old one runs out. The DoT's slot on the tracker "
             .. "pulses when its time left is the spell's cast time plus your lead time, so a cast started then "
-            .. "lands as the old one ends. An instant DoT pulses one lead time before it ends. Timed from your "
-            .. "own casts, so it needs DoT prediction available." .. PREDICT_NEEDS, Refresh)
+            .. "lands as the old one ends. An instant DoT pulses as it runs out, after its last tick. A DoT that ran "
+            .. "out pulses until you recast it. Timed from your own casts, so it needs DoT prediction available."
+            .. PREDICT_NEEDS, Refresh)
     local setting = Proxy(page, "GRIMOIRE_RECAST_LEAD", Settings.VarType.Number, "Lead time", WTF.DEFAULT_RECAST_LEAD,
         function() return WTF.db.recast.lead end,
         function(value)
@@ -471,8 +472,8 @@ local function AddRecastSection(page, layout)
         SliderOptions(WTF.RECAST_LEAD_MIN, WTF.RECAST_LEAD_MAX, 1, function(value)
             return string.format("%.1f s", value / 10)
         end),
-        "How much earlier than the cast time the mark appears: your reaction time and your lag. Too long and "
-            .. "the new DoT lands before the old one's last tick.")
+        "For a DoT with a cast time: how much earlier than the cast time the mark appears, your reaction time and "
+            .. "your lag. Too long and the new DoT lands before the old one's last tick.")
     AddDefaultTick(lead, WTF.RECAST_LEAD_MIN, WTF.RECAST_LEAD_MAX, WTF.DEFAULT_RECAST_LEAD)
     lead:SetParentInitializer(enabled, function() return WTF.db.recast.enabled end)
     -- 0.3.5: the mark's look.
