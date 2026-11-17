@@ -17,6 +17,27 @@ local _, WTF = ...
 
 local PREDICT_PRIORITY = 10
 
+-- Grimoire: channels that change how fast your DoTs tick while you channel
+-- them (Engine\DotPredict.lua, "Tick-rate channels"). Wrack (Forever hotfix
+-- 2026-11-10): Corruption, Siphon Life and Bane of Agony tick twice as fast,
+-- and the time skipped stays skipped. The spell is matched by ID (Dyre's
+-- Toolkit's tests name it) and by name. Not checked in client yet: `scope`
+-- assumes only the mob you channel on is affected ("all" would be every mob),
+-- and `longest` is only the safety stop if the game sends no channel end.
+WTF.PREDICT_CHANNELS = {
+    {key = "wrack", label = "Wrack", ids = {1316697}, names = {"Wrack"}, rate = 2,
+        families = {"corruption", "siphon", "agony"}, scope = "target", longest = 15},
+}
+
+-- What the predictor saw, counted in the diagnostics (counts only), so the
+-- first sessions with Wrack show whether the model fits: many "tick" and few
+-- "miss" means the faster rhythm matched.
+local function OnRate(what, key)
+    if type(WTF.NoteDiagnostic) == "function" then
+        WTF.NoteDiagnostic("predict.rate." .. key .. "." .. what)
+    end
+end
+
 local predict = {available = false}
 
 local function Color()
@@ -53,6 +74,8 @@ function WTF.InitializePredict()
         class = "WARLOCK",
         store = WTF.db.predict,
         color = Color,
+        channels = WTF.PREDICT_CHANNELS,
+        onRate = OnRate,
     })
     if not predictor then
         return

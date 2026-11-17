@@ -15,7 +15,7 @@ One action reaches another player, and only on your click: a left-click on the H
 - **Soul Shards.** Deletes shards that Drain Soul or Shadowburn create above your limit (your soul bag's size, or a number you set). Shards you had, bought or moved in are never deleted. A counter shows how many you carry.
 - **Stones.** A bar with Soulstone and Healthstone buttons: left-click uses, right-click creates. Reminders when none is up.
 - **DoT tracker.** A row per mob you have DoTs on, with the time left on your Curse, Bane, Corruption, Immolate, Siphon Life and Fear. Optional dots under nameplates.
-- **Predict.** Shows the damage your DoTs will still do on the target's health bar, and DIES when they will finish the mob.
+- **Predict.** Shows the damage your DoTs will still do on the target's health bar, and DIES when they will finish the mob. While you channel Wrack it counts the faster ticks (built ahead of the talent; not yet checked in game).
 - **Control bar.** Timers for the mobs you Fear or Banish, with `! Fear`, `! Banish`, `! Seduction` and `! Curse` macros kept up to date in your macro list.
 - **Alert window.** Short lines in a window of their own: centered text, no backdrop by default.
 - **Reminders.** Click-to-cast icons for a missing Demon Armor or Demon Skin and a missing demon. Their lines back off (at once, then 2, 5, then every 15 minutes) and stay quiet while you are dead, on a flight path or resting.
@@ -44,7 +44,22 @@ Internal Lua names are kept as in WTF (the namespace is still called `WTF` in th
 
 Copy the `Grimoire` folder into `World of Warcraft\_forever_\Interface\AddOns\`. Restart the game after adding or removing files; `/reload` is enough after changing existing ones.
 
-No other addon is required. BugSack with BugGrabber is useful for catching errors.
+No other addon is required.
+
+## Recommended addons
+
+None of these is needed; Grimoire runs alone. They are the ones it was built and tested beside.
+
+| Addon | Why |
+|---|---|
+| [BugSack](https://www.curseforge.com/wow/addons/bugsack) with [!BugGrabber](https://www.curseforge.com/wow/addons/bug-grabber) | Catches Lua errors with the file and line, and keeps them between sessions. This is how a clash with another addon, or a part of Grimoire that failed to start, gets found. Install both. BugSack's "Fatality" sound plays on any addon's error, not only Grimoire's; it can be muted in BugSack's settings. |
+| The game's own Cooldown Manager | Shows your cooldowns and tracked buffs. Grimoire leaves those to it and only adds what it lacks. |
+| The game's own Damage Meter | Predict learns each DoT's tick size from it after a fight. With it off, Predict keeps guessing from the spell's rank and your spell power. |
+| Enemy nameplates (a game setting) | Predict and the DoT dots draw on them, and they let Grimoire tell mobs apart in a fight. |
+
+Questie, Chattynator, Baganator, BetterVendorPrice, ProfessionMaster, TradeBoard and TrainerSpells were installed during testing, and BugGrabber recorded no Grimoire error beside them. If BugSack shows an error that names `Grimoire` in its path, it is Grimoire's; an error naming another addon's folder is that addon's, even if it appeared after Grimoire was installed.
+
+When reporting a problem, include the BugSack text and the output of `/grim debug_log`.
 
 ## Commands
 

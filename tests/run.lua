@@ -6693,8 +6693,135 @@ test("debug_predict lists each mob's DoTs, ticks, and damage to come", function(
     state.slash("debug_predict")
     contains(state.messages[1], "enabled=true plates=true dies=true")
     contains(state.messages[2], "Frames: target=Blizzard, focus=none, nameplate3=Blizzard")
-    contains(state.messages[3], "Boar: 72 to come")
-    contains(state.messages[4], "corruption (spell 6222): tick 1 of 5, learned 18.0, 72 to come")
+    contains(state.messages[3], "Channel Wrack: corruption, agony, siphon tick x2 on its mob; this session: 0 channels")
+    contains(state.messages[4], "Boar: 72 to come")
+    contains(state.messages[5], "corruption (spell 6222): tick 1 of 5, learned 18.0, 72 to come")
+end)
+
+-- Tick-rate channels (Grimoire 0.2.2): Wrack ------------------------------------
+
+local WRACK = 1316697
+
+test("Wrack: while you channel it, that mob's Corruption ticks twice as fast, and the time skipped stays skipped", function()
+    local state = predictFixture()
+    apply(state, 6222, "Corruption")
+    apply(state, 6222, "Corruption", WOLF, "Wolf")
+    state.now = state.now + 3
+    tick(state, 6222, "Corruption", 18)
+    tick(state, 6222, "Corruption", 18, WOLF)
+    equal(state.wtf.PredictedDamage(BOAR), 72, "4 ticks of 18 left")
+    state.emit("UNIT_SPELLCAST_SENT", "player", "Boar", "Cast-9", WRACK)
+    state.emit("UNIT_SPELLCAST_CHANNEL_START", "player", "Cast-9", WRACK)
+    local dot = state.wtf.predictor.mobs[BOAR].dots.corruption
+    equal(dot.interval, 1.5, "half the interval")
+    equal(state.wtf.PredictedDamage(BOAR), 72, "the tick just done stays done")
+    state.now = state.now + 1.5
+    equal(state.wtf.PredictedDamage(BOAR), 54, "a tick every 1.5 s now")
+    equal(state.wtf.PredictedDamage(WOLF), 72, "another mob keeps its own rhythm")
+    state.now = state.now + 1.5
+    equal(state.wtf.PredictedDamage(BOAR), 36)
+    state.emit("UNIT_SPELLCAST_CHANNEL_STOP", "player", "Cast-9", WRACK)
+    equal(dot.interval, 3, "back to 3 s")
+    equal(dot.rate, 1)
+    state.now = state.now + 2.9
+    equal(state.wtf.PredictedDamage(BOAR), 36, "the next tick is a whole interval away again")
+    state.now = state.now + 0.2
+    equal(state.wtf.PredictedDamage(BOAR), 18)
+    -- 3 s were skipped: the DoT ends 3 s sooner than its 15 s.
+    near(dot.applied + dot.duration, 100 + 15 - 3, "ends sooner")
+    state.now = state.now + 3.5
+    state.runTimers()
+    equal(state.wtf.predictor.mobs[BOAR], nil, "gone at its new end")
+    equal(state.wtf.PredictedDamage(WOLF), 18, "the other one still has its last tick to come")
+    state.now = state.now + 3
+    state.runTimers()
+    equal(state.wtf.predictor.mobs[WOLF], nil, "and ran its whole 15 s")
+    state.clear()
+    state.slash("debug_predict")
+    contains(state.messages[3], "this session: 1 channels")
+end)
+
+test("Wrack: found by name too; a DoT cast during it joins the rhythm; other families and channels are left alone", function()
+    local state = predictFixture()
+    local known = state.env.C_Spell.GetSpellName
+    state.env.C_Spell.GetSpellName = function(id)
+        if id == 424242 then return "Wrack" end
+        return known(id)
+    end
+    apply(state, 707, "Immolate")
+    state.emit("UNIT_SPELLCAST_CHANNEL_START", "player", "Cast-1", 11675)
+    equal(state.wtf.predictor.boost, nil, "Drain Soul changes nothing")
+    state.emit("UNIT_SPELLCAST_CHANNEL_START", "player", "Cast-2", 424242)
+    equal(state.wtf.predictor.boost ~= nil, true, "no send seen: your target")
+    equal(state.wtf.predictor.boost.key, BOAR)
+    equal(state.wtf.predictor.mobs[BOAR].dots.immolate.interval, 3, "Immolate is not on Wrack's list")
+    apply(state, 980, "Bane of Agony")
+    equal(state.wtf.predictor.mobs[BOAR].dots.agony.interval, 1, "Agony's 2 s halves")
+    -- A second channel start ends the first.
+    state.emit("UNIT_SPELLCAST_CHANNEL_START", "player", "Cast-3", 424242)
+    equal(state.wtf.predictor.mobs[BOAR].dots.agony.interval, 1)
+    -- No stop event: the safety stop ends it.
+    state.now = state.now + 15.1
+    state.runTimers()
+    equal(state.wtf.predictor.boost, nil, "stopped by the clock")
+    local hidden = secret()
+    state.secrets[hidden] = true
+    state.emit("UNIT_SPELLCAST_CHANNEL_START", "player", "Cast-4", hidden)
+    equal(state.wtf.predictor.boost, nil, "a secret spell ID is not Wrack")
+end)
+
+test("Wrack: the setting turns it off; it is on by default and repaired", function()
+    local state = predictFixture()
+    equal(state.wtf.db.predict.channels, true)
+    equal(state.settings.GRIMOIRE_PREDICT_CHANNELS.name, "Faster ticks while channeling Wrack")
+    state.wtf.db.predict.channels = false
+    apply(state, 6222, "Corruption")
+    state.emit("UNIT_SPELLCAST_CHANNEL_START", "player", "Cast-9", WRACK)
+    equal(state.wtf.predictor.boost, nil)
+    equal(state.wtf.predictor.mobs[BOAR].dots.corruption.interval, 3)
+    local broken = predictFixture({db = {predict = {channels = "no"}}})
+    equal(broken.wtf.db.predict.channels, true)
+    local off = predictFixture({db = {predict = {channels = false}}})
+    equal(off.wtf.db.predict.channels, false)
+end)
+
+test("Wrack on Forever: hidden ticks follow the faster rhythm, are counted for the diagnostics, and the DoT is not dropped", function()
+    local state = predictFixture({combatLogRestricted = true, restrictCombatLog = true})
+    local SHADOW = 32
+    local amount = secret()
+    state.secrets[amount] = true
+    local function hit() state.emit("UNIT_COMBAT", "target", "WOUND", "", amount, SHADOW) end
+    state.emit("UNIT_SPELLCAST_SENT", "player", "Boar", "Cast-1", 6222)
+    state.emit("UNIT_SPELLCAST_SUCCEEDED", "player", "Cast-1", 6222)
+    local dot = state.wtf.predictor.mobs[BOAR].dots.corruption
+    equal(dot.ticks, 5)
+    local each = dot.average
+    state.now = state.now + 3
+    hit()
+    equal(dot.seen, 1)
+    state.emit("UNIT_SPELLCAST_SENT", "player", "Boar", "Cast-2", WRACK)
+    state.emit("UNIT_SPELLCAST_CHANNEL_START", "player", "Cast-2", WRACK)
+    state.now = state.now + 1.5
+    hit()
+    equal(dot.seen, 2, "a tick 1.5 s after the last one is in rhythm")
+    state.now = state.now + 1.5
+    hit()
+    equal(dot.seen, 3)
+    equal(state.wtf.PredictedDamage(BOAR), math.floor(each * 2 + 0.5))
+    -- A slot with no tick while the mob shows: one miss, not a drop.
+    state.now = state.now + 1.5 + 0.3
+    state.runTimers()
+    equal(state.wtf.predictor.mobs[BOAR].dots.corruption, dot, "still there")
+    state.emit("UNIT_SPELLCAST_CHANNEL_STOP", "player", "Cast-2", WRACK)
+    equal(dot.interval, 3)
+    state.clear()
+    state.slash("debug_predict")
+    contains(state.messages[3], "this session: 1 channels, 2 ticks in rhythm, 1 missed, 0 with no mob")
+    local facts = state.wtf.accountDB.diagnostics.facts
+    equal(facts["predict.rate.wrack.start@idle.world"].n, 1)
+    equal(facts["predict.rate.wrack.tick@idle.world"].n, 2)
+    equal(facts["predict.rate.wrack.miss@idle.world"].n, 1)
+    equal(facts["predict.rate.wrack.stop@idle.world"].n, 1)
 end)
 
 -- Dyre's Toolkit's shared files and engines (WTF 1.4.1, 1.5.0) -------------------

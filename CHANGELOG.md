@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.2 (2026-11-17)
+
+Added
+- Predict: groundwork for Wrack. While you channel it, your Corruption, Siphon Life and Bane of Agony on that mob are counted as ticking twice as fast, with the skipped time staying skipped. The engine takes a list of such channels (`WTF.PREDICT_CHANNELS` in `Predict.lua`), so another one is a line of data. Setting: DoT Tracker page, "Faster ticks while channeling Wrack" (on). `/grim debug_predict` shows the channel and this session's counts; the diagnostics count starts, ticks in rhythm and misses, to check the model once the talent is taken. Built from the hotfix notes; not yet seen in game.
+- README: recommended addons.
+
 ## 0.2.1 (2026-11-17)
 
 After an audit against one evening of in-game data.

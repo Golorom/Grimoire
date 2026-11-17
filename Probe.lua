@@ -526,6 +526,14 @@ local function Note(check, value)
     end
 end
 
+-- Another part's own count (the predictor's Wrack counts): one more under
+-- this check, at the place it happened. Counts only.
+function WTF.NoteDiagnostic(check, sample)
+    if type(check) == "string" and check ~= "" then
+        Add(check, "readable", sample)
+    end
+end
+
 local function Try(check, run)
     if recorder.stopped[check] then
         return

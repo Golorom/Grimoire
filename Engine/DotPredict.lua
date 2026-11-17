@@ -69,6 +69,12 @@ local DyresToolkit = ns.toolkit
 --   - `mask` overrides the school's mask (Frostfire 4 + 16, Does It Die);
 --     `ground` (Immolation Trap) never starts from a cast on the hidden path:
 --     the trap has no mob at the cast.
+--
+-- Grimoire (0.2.2; not in Dyre's Toolkit): tick-rate channels. spec.channels
+-- lists channeled spells that make some DoT families tick faster while you
+-- channel them (Wrack, Forever hotfix 2026-11-10: Corruption, Siphon Life and
+-- Bane of Agony tick twice as fast, and the time skipped stays skipped). See
+-- "Tick-rate channels" below. Every changed line is marked "Grimoire:".
 
 local LOW_LEVEL = 20
 local LOW_LEVEL_PENALTY = 0.0375
@@ -244,6 +250,8 @@ function DyresToolkit.CreateDotPredictor(spec)
         player = UnitGUID("player"), hidden = hidden, sent = {}, power = {}, spells = {}, tally = {}, points = {}}
     local events = CreateFrame("Frame")
     ImportTicks(spec.addon, spec.legacyTicks)
+    -- Grimoire: tick-rate channels; filled in below ("Tick-rate channels").
+    local rates = {stats = {}}
 
     local function Weight(family, tick)
         return DyresToolkit.TickWeight(FAMILIES[family], tick)
@@ -747,7 +755,10 @@ function DyresToolkit.CreateDotPredictor(spec)
             if amount ~= DEBUFF then
                 return
             end
-            Apply(destGUID, destName, family, rankID)
+            local dot = Apply(destGUID, destName, family, rankID)
+            if dot then
+                rates.Applied(destGUID, dot) -- Grimoire
+            end
         elseif TICKS[subevent] then
             Tick(destGUID, family, amount)
         elseif subevent == MISSED then
@@ -938,6 +949,7 @@ function DyresToolkit.CreateDotPredictor(spec)
             end
             if Observable(key) then
                 dot.missed = dot.missed + 1
+                rates.Missed(dot) -- Grimoire
                 if dot.missed >= MISSES_TO_DROP then
                     Unclean(dot)
                     Forget(key, dot.family)
@@ -961,6 +973,7 @@ function DyresToolkit.CreateDotPredictor(spec)
         end
         dot.missed, dot.ticked = 0, 0
         dot.previous = old
+        rates.Applied(key, dot) -- Grimoire
         if InCombatLockdown() then
             local entry = Tally(dot)
             if key:find("-", 1, true) == nil then
@@ -1005,9 +1018,228 @@ function DyresToolkit.CreateDotPredictor(spec)
         return DefaultKey()
     end
 
+    -- Grimoire: tick-rate channels (Wrack) ---------------------------------------
+    --
+    -- spec.channels: a list of
+    --   {key, label, ids = {spell IDs}, names = {spell names}, rate = 2,
+    --    families = {"corruption", ...}, scope = "target" or "all",
+    --    longest = seconds}
+    -- While you channel one, each listed family's DoT on the channel's mob
+    -- (scope "all": on every mob) ticks `rate` times as fast. The ticks and
+    -- their size stay; the DoT ends sooner. store.channels == false turns it
+    -- off (read as the channel starts).
+    --
+    -- A DoT's clock is `applied` and `interval`: tick slot n is due at
+    -- applied + n * interval. A rate change rebases both at the moment it
+    -- happens, so the share of the open slot already waited is kept and every
+    -- later slot follows the new rhythm. The slot timer and the expiry timer
+    -- are set again; their older copies see that they are stale and stop.
+    --
+    -- The mob comes from UNIT_SPELLCAST_SENT (as for a DoT cast), else your
+    -- target as the channel starts. The channel ends at
+    -- UNIT_SPELLCAST_CHANNEL_STOP, else after `longest` seconds.
+    --
+    -- Not checked in client yet (the fork's player has no Wrack): whether the
+    -- faster ticks are only on the channel's mob, whether the channel events
+    -- carry a readable spell ID, and whether the channel's own hits, which
+    -- share the DoTs' school, land in a DoT's tick window often enough to
+    -- matter. spec.onRate(what, key) reports "start", "tick", "miss", "stop"
+    -- and "nomob" so the owner can count them.
+    local CHANNEL_SENT_EXPIRY = 3
+    local CHANNEL_LONGEST = 15
+    local CHANNELS, CHANNEL_BY_ID, CHANNEL_BY_NAME = {}, {}, {}
+
+    for _, entry in ipairs(type(spec.channels) == "table" and spec.channels or {}) do
+        if type(entry) == "table" and type(entry.key) == "string" and type(entry.rate) == "number"
+                and entry.rate > 0 and entry.rate ~= 1 and type(entry.families) == "table" then
+            local channel = {key = entry.key, label = entry.label or entry.key, rate = entry.rate, families = {},
+                all = entry.scope == "all",
+                longest = type(entry.longest) == "number" and entry.longest > 0 and entry.longest or CHANNEL_LONGEST}
+            for index, value in pairs(entry.families) do
+                -- A list of names, or a set.
+                local family = type(index) == "number" and value or index
+                if FAMILIES[family] then
+                    channel.families[family] = true
+                end
+            end
+            if next(channel.families) then
+                CHANNELS[#CHANNELS + 1] = channel
+                for _, id in ipairs(type(entry.ids) == "table" and entry.ids or {}) do
+                    CHANNEL_BY_ID[id] = channel
+                end
+                for _, name in ipairs(type(entry.names) == "table" and entry.names or {}) do
+                    CHANNEL_BY_NAME[name] = channel
+                end
+                rates.stats[channel.key] = {start = 0, tick = 0, miss = 0, stop = 0, nomob = 0}
+            end
+        end
+    end
+    rates.any = #CHANNELS > 0
+
+    local function ChannelOf(spellID)
+        if DyresToolkit.IsSecret(spellID) or type(spellID) ~= "number" then
+            return nil
+        end
+        return CHANNEL_BY_ID[spellID] or CHANNEL_BY_NAME[DyresToolkit.SpellName(spellID) or ""]
+    end
+
+    local function RateEvent(what, channel)
+        local stats = rates.stats[channel.key]
+        stats[what] = (stats[what] or 0) + 1
+        if type(spec.onRate) == "function" then
+            pcall(spec.onRate, what, channel.key)
+        end
+    end
+
+    local function SetRate(key, dot, rate, now)
+        if (dot.rate or 1) == rate then
+            return
+        end
+        local base = dot.baseInterval or dot.interval
+        -- The time after the last tick, if the duration is not whole ticks.
+        local tail = dot.duration - dot.ticks * dot.interval
+        local progress = (now - dot.applied) / dot.interval
+        dot.baseInterval, dot.rate, dot.interval = base, rate, base / rate
+        dot.applied = now - progress * dot.interval
+        dot.duration = dot.ticks * dot.interval + tail
+        -- The hidden path's slot timer (a DoT it started has `missed`).
+        if hidden and dot.missed then
+            WatchSlot(key, dot)
+        end
+        Expire(key, dot.family, dot)
+    end
+
+    local function Boosts(boost, key, family)
+        return boost.channel.families[family] == true and (boost.channel.all or boost.key == key)
+    end
+
+    local function EndBoost(now)
+        local boost = predict.boost
+        if not boost then
+            return
+        end
+        predict.boost = nil
+        local changed = {}
+        for key, mob in pairs(predict.mobs) do
+            for _, dot in pairs(mob.dots) do
+                if dot.rate and dot.rate ~= 1 then
+                    SetRate(key, dot, 1, now)
+                    changed[#changed + 1] = key
+                end
+            end
+        end
+        for _, key in ipairs(changed) do
+            DrawGUID(key)
+        end
+        RateEvent("stop", boost.channel)
+    end
+
+    local function StartBoost(channel, key)
+        local now = GetTime()
+        EndBoost(now)
+        if store.channels == false then
+            return
+        end
+        if not channel.all and not key then
+            RateEvent("nomob", channel)
+            return
+        end
+        local boost = {channel = channel, key = key, at = now}
+        predict.boost = boost
+        local changed = {}
+        for mobKey, mob in pairs(predict.mobs) do
+            for family, dot in pairs(mob.dots) do
+                if Boosts(boost, mobKey, family) then
+                    SetRate(mobKey, dot, channel.rate, now)
+                    changed[#changed + 1] = mobKey
+                end
+            end
+        end
+        for _, mobKey in ipairs(changed) do
+            DrawGUID(mobKey)
+        end
+        RateEvent("start", channel)
+        C_Timer.After(channel.longest, function()
+            if predict.boost == boost then
+                EndBoost(GetTime())
+            end
+        end)
+    end
+
+    -- A DoT that starts while a channel runs joins its rhythm.
+    function rates.Applied(key, dot)
+        local boost = predict.boost
+        if boost and Boosts(boost, key, dot.family) then
+            SetRate(key, dot, boost.channel.rate, GetTime())
+        end
+    end
+
+    function rates.Ticked(dot)
+        if predict.boost and dot.rate and dot.rate ~= 1 then
+            RateEvent("tick", predict.boost.channel)
+        end
+    end
+
+    function rates.Missed(dot)
+        if predict.boost and dot.rate and dot.rate ~= 1 then
+            RateEvent("miss", predict.boost.channel)
+        end
+    end
+
+    -- The channel's mob, as the cast is sent.
+    function rates.Sent(targetName, spellID)
+        if not rates.any then
+            return
+        end
+        local channel = ChannelOf(spellID)
+        if channel then
+            predict.channelSent = {channel = channel, key = SentKey(targetName), at = GetTime()}
+        end
+    end
+
+    function rates.ChannelStart(spellID)
+        local channel = ChannelOf(spellID)
+        if not channel then
+            return
+        end
+        local sent = predict.channelSent
+        predict.channelSent = nil
+        local key
+        if sent and sent.channel == channel and GetTime() - sent.at <= CHANNEL_SENT_EXPIRY then
+            key = sent.key
+        else
+            key = Key("target")
+        end
+        StartBoost(channel, key or nil)
+    end
+
+    function rates.ChannelStop()
+        EndBoost(GetTime())
+    end
+
+    -- /debug: each channel, what it changes, and this session's counts.
+    function rates.DebugLines(lines)
+        for _, channel in ipairs(CHANNELS) do
+            local families = {}
+            for _, family in ipairs(FAMILY_ORDER) do
+                if channel.families[family] then
+                    families[#families + 1] = family
+                end
+            end
+            local stats = rates.stats[channel.key]
+            local boost = predict.boost
+            lines[#lines + 1] = string.format("Channel %s: %s tick x%s on %s%s; this session: %d channels, "
+                .. "%d ticks in rhythm, %d missed, %d with no mob%s", channel.label, table.concat(families, ", "),
+                tostring(channel.rate), channel.all and "every mob" or "its mob",
+                store.channels == false and " (off)" or "", stats.start, stats.tick, stats.miss, stats.nomob,
+                boost and boost.channel == channel and "; running now" or "")
+        end
+    end
+
     local function OnSent(targetName, castGUID, spellID)
         -- A finisher's points first: by SUCCEEDED they are spent.
         NotePoints(spellID)
+        rates.Sent(targetName, spellID) -- Grimoire
         if not hidden then
             return
         end
@@ -1122,6 +1354,7 @@ function DyresToolkit.CreateDotPredictor(spec)
         end
         best.seen, best.missed, best.doubtful = bestSlot, 0, nil
         best.ticked = best.ticked + 1
+        rates.Ticked(best) -- Grimoire
         if InCombatLockdown() then
             local entry = Tally(best)
             entry.count = entry.count + 1
@@ -1270,6 +1503,10 @@ function DyresToolkit.CreateDotPredictor(spec)
             if rank then
                 predict.lastCast[rank[1]] = spellID
             end
+        elseif event == "UNIT_SPELLCAST_CHANNEL_START" then
+            rates.ChannelStart(third) -- Grimoire
+        elseif event == "UNIT_SPELLCAST_CHANNEL_STOP" then
+            rates.ChannelStop() -- Grimoire
         elseif event == "PLAYER_REGEN_ENABLED" then
             CombatEnded()
         elseif event == "PLAYER_TARGET_CHANGED" then
@@ -1376,6 +1613,7 @@ function DyresToolkit.CreateDotPredictor(spec)
             end
         end
         lines[#lines + 1] = "Frames: " .. table.concat(frames, ", ")
+        rates.DebugLines(lines) -- Grimoire
         local now, any = GetTime(), false
         for guid, mob in pairs(self.mobs) do
             any = true
@@ -1424,8 +1662,12 @@ function DyresToolkit.CreateDotPredictor(spec)
         finishers = finishers or family.finisher == true
     end
     -- The send: the mob (hidden path) and a finisher's points (both).
-    if hidden or finishers then
+    if hidden or finishers or rates.any then -- Grimoire: or a tick-rate channel
         events:RegisterUnitEvent("UNIT_SPELLCAST_SENT", "player")
+    end
+    if rates.any then -- Grimoire
+        events:RegisterUnitEvent("UNIT_SPELLCAST_CHANNEL_START", "player")
+        events:RegisterUnitEvent("UNIT_SPELLCAST_CHANNEL_STOP", "player")
     end
     if hidden then
         for family in pairs(FAMILIES) do

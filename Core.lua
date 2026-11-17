@@ -133,7 +133,8 @@ local REQUIRED_NAMESPACE = {
     "RefreshTrackerPrediction",
     "ReportRestrictions", "ResetFocusWorks", "InitializeProbe",
     "SanitizeDiagnostics", "SanitizeDiagnosticsRecord", "StartDiagnostics", "RefreshDiagnostics",
-    "ReportDiagnostics", "ResetDiagnostics", "SaveDiagnostics", "NoteAlertEvent", "InitializeOptions", "OpenSettings",
+    "ReportDiagnostics", "ResetDiagnostics", "SaveDiagnostics", "NoteAlertEvent", "NoteDiagnostic",
+    "InitializeOptions", "OpenSettings",
     "SanitizeAlerts", "InitializeAlerts", "RefreshAlerts", "Alert", "TestAlerts", "ResetAlertsPosition",
     "SanitizeReminders", "InitializeReminders", "RefreshReminders", "ResetRemindersPosition",
     "SanitizeThreat", "InitializeThreat", "SanitizePet", "InitializePet", "RefreshPetTaunt",
@@ -557,6 +558,8 @@ function WTF.SanitizeDB(db)
         enabled = predict.enabled ~= false,
         plates = predict.plates ~= false,
         dies = predict.dies ~= false,
+        -- Faster ticks while you channel Wrack (0.2.2).
+        channels = predict.channels ~= false,
         fill = WTF.SanitizeChoice(predict.fill, WTF.PREDICT_FILLS),
         color = WTF.SanitizeChoice(predict.color, WTF.PREDICT_COLORS),
         opacity = WTF.SanitizeWhole(predict.opacity, WTF.PREDICT_OPACITY_MIN, WTF.PREDICT_OPACITY_MAX,

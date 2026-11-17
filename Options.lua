@@ -425,6 +425,11 @@ local function AddPredictSection(page, layout)
     local dies = Flag(page, "GRIMOIRE_PREDICT_DIES", "Show DIES", "predict", "dies", true,
         "\"DIES\" in red on the health bar when your DoTs will deal at least the mob's health." .. PREDICT_NEEDS,
         Refresh)
+    local channels = Flag(page, "GRIMOIRE_PREDICT_CHANNELS", "Faster ticks while channeling Wrack", "predict",
+        "channels", true,
+        "While you channel Wrack, your Corruption, Siphon Life and Bane of Agony on that mob tick twice as "
+            .. "fast, so the block shrinks twice as fast too. Does nothing until you have Wrack. Turn it off if "
+            .. "the block runs ahead of the mob's health while you channel." .. PREDICT_NEEDS, Refresh)
     local function Choice(variable, name, key, choices, default, tooltip)
         local setting = Proxy(page, variable, Settings.VarType.String, name, default,
             function() return WTF.db.predict[key] end,
@@ -499,14 +504,15 @@ local function AddPredictSection(page, layout)
     for _, initializer in ipairs({fill, color, opacity, outline}) do
         initializer:SetParentInitializer(enabled, function() return WTF.db.predict.enabled end)
     end
-    for _, initializer in ipairs({enabled, plates, dies, fill, color, opacity, outline, diesPlace, diesX, diesY,
-            plateDiesPlace, plateDiesX, plateDiesY}) do
+    for _, initializer in ipairs({enabled, plates, dies, channels, fill, color, opacity, outline, diesPlace, diesX,
+            diesY, plateDiesPlace, plateDiesX, plateDiesY}) do
         if type(initializer.AddModifyPredicate) == "function" then
             initializer:AddModifyPredicate(function() return WTF.PredictAvailable() end)
         end
     end
     plates:SetParentInitializer(enabled, function() return WTF.db.predict.enabled end)
     dies:SetParentInitializer(enabled, function() return WTF.db.predict.enabled end)
+    channels:SetParentInitializer(enabled, function() return WTF.db.predict.enabled end)
 end
 
 -- Sections (author): General (what every panel shares) first, then one per
