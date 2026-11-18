@@ -48,7 +48,12 @@ function WTF.InitializePlateDots()
     if not tracker then
         return
     end
-    local engine = WTF.shared.CreatePlateDots({tracker = tracker, store = WTF.db.tracker})
+    -- 0.4.3: a quiet bubble, a soft dark strip with no tooltip border, so the
+    -- dots read and the frame around them does not stick out.
+    local engine = WTF.shared.CreatePlateDots({tracker = tracker, store = WTF.db.tracker, dress = function(bubble)
+        bubble:SetBackdrop({bgFile = "Interface\\Buttons\\WHITE8X8"})
+        bubble:SetBackdropColor(0, 0, 0, 0.35)
+    end})
     if not engine then
         return
     end

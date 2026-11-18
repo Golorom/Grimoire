@@ -295,7 +295,9 @@ end
 
 -- 0.3.8: a small red F on a button that holds a focus macro, so it reads
 -- apart from the same spell for your target. A plain frame on the button.
-local FOCUS_RED = {1, 0.25, 0.2}
+local FOCUS_RED = {0.85, 0.1, 0.1}
+-- The badge's side: a share of the button's width, within these pixels.
+local FOCUS_BADGE_SHARE, FOCUS_BADGE_MIN, FOCUS_BADGE_MAX = 0.36, 13, 20
 
 local function FocusMark(button, shown)
     local mark = button.grimoireFocusMark
@@ -304,13 +306,26 @@ local function FocusMark(button, shown)
         mark:SetAllPoints(button)
         mark:EnableMouse(false)
         mark:SetFrameLevel(math.min(button:GetFrameLevel() + 5, 10000))
+        -- 0.4.3: a badge in the corner, a white F on red with a dark rim (a
+        -- small red letter was lost on the icon).
+        local width = type(button.GetWidth) == "function" and button:GetWidth()
+        local side = math.max(FOCUS_BADGE_MIN, math.min(FOCUS_BADGE_MAX,
+            math.floor((type(width) == "number" and width or 0) * FOCUS_BADGE_SHARE + 0.5)))
+        mark.rim = mark:CreateTexture(nil, "BACKGROUND")
+        mark.rim:SetColorTexture(0, 0, 0, 0.9)
+        mark.rim:SetSize(side + 2, side + 2)
+        mark.rim:SetPoint("TOPLEFT", mark, "TOPLEFT", 0, 0)
+        mark.badge = mark:CreateTexture(nil, "BORDER")
+        mark.badge:SetColorTexture(FOCUS_RED[1], FOCUS_RED[2], FOCUS_RED[3], 1)
+        mark.badge:SetSize(side, side)
+        mark.badge:SetPoint("CENTER", mark.rim, "CENTER", 0, 0)
         mark.text = mark:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-        mark.text:SetPoint("TOPLEFT", mark, "TOPLEFT", 2, -2)
-        local font, size = mark.text:GetFont()
+        mark.text:SetPoint("CENTER", mark.badge, "CENTER", 0, 0)
+        local font = mark.text:GetFont()
         if font then
-            mark.text:SetFont(font, size, "OUTLINE")
+            mark.text:SetFont(font, side - 3, "OUTLINE")
         end
-        mark.text:SetTextColor(FOCUS_RED[1], FOCUS_RED[2], FOCUS_RED[3])
+        mark.text:SetTextColor(1, 1, 1)
         mark.text:SetText("F")
         button.grimoireFocusMark = mark
     end

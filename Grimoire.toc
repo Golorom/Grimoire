@@ -2,7 +2,7 @@
 ## Title: Grimoire
 ## Notes: Personal Warlock tools for WoW Forever, forked from Warlock Tools Forever by Dyre
 ## Author: R.
-## Version: 0.4.2
+## Version: 0.4.3
 ## IconTexture: Interface\Icons\INV_Misc_Book_06
 ## Category: Warlock
 ## SavedVariables: GrimoireAccountDB

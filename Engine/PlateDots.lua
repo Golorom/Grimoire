@@ -92,6 +92,10 @@ function DyresToolkit.CreatePlateDots(spec)
             insets = {left = 2, right = 2, top = 2, bottom = 2}})
         bubble:SetBackdropColor(0, 0, 0, 0.7)
         bubble:SetBackdropBorderColor(0.6, 0.5, 0.3)
+        -- Grimoire: the owner may dress the bubble its own way (spec.dress).
+        if type(spec.dress) == "function" then
+            spec.dress(bubble)
+        end
         bubble:EnableMouse(false)
         bubble.colored = {}
         local container = DyresToolkit.CreateAuraContainer(bubble)

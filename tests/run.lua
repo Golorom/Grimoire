@@ -896,6 +896,7 @@ local function fixture(options)
         if parent and parent.children then parent.children[#parent.children + 1] = object end
         function object:SetBackdropBorderColor(...) self.backdropBorder = {...} end
         function object:SetBackdrop(backdrop) self.backdrop = backdrop end
+        function object:SetBackdropColor(...) self.backdropColor = {...} end
         function object:SetStatusBarColor(...) self.barColor = {...} end
         function object:SetStatusBarTexture(texture) self.statusBarTexture = texture end
         function object:SetOrientation(orientation) self.orientation = orientation end
@@ -5835,8 +5836,18 @@ test("each hostile plate gets a bubble with a dot per DoT you know", function()
     equal(point[1], "BOTTOM")
     equal(point[2], state.plates.nameplate1)
     equal(point[3], "TOP")
-    equal(point[5], 50)
+    equal(point[5], 20, "0.4.3: just above the nameplate by default")
     equal(state.wtf.HasTrackableDots(), true)
+    -- A quiet bubble: a soft dark strip, no tooltip border.
+    equal(bubble.backdrop.edgeFile, nil)
+    equal(bubble.backdropColor[4], 0.35)
+    -- WTF's untouched height moves to the new default once; a choice stays.
+    equal(dotsFixture({db = {tracker = {plateDotsOffset = 50}}}).wtf.db.tracker.plateDotsOffset, 20)
+    equal(dotsFixture({db = {tracker = {plateDotsOffset = 50, plateDotsLook = 2}}}).wtf.db.tracker.plateDotsOffset,
+        50, "chosen again later")
+    equal(dotsFixture({db = {tracker = {plateDotsOffset = 35}}}).wtf.db.tracker.plateDotsOffset, 35)
+    equal(dotsFixture({db = {tracker = {plateDotsOffset = -30}}}).wtf.db.tracker.plateDotsOffset, -30,
+        "below the nameplate's top edge")
 end)
 test("dots show only in combat, on live hostile mobs", function()
     local state = dotsFixture()
@@ -5897,10 +5908,10 @@ test("the dot height slider has a gold mark at the default, hidden on reuse", fu
     local tick = slider.wtfDefaultTick
     equal(tick.shown, true)
     local point = tick.points[#tick.points]
-    -- The thumb's center runs from 10 to 230; 50 of 0-120 is 5/12 of the way.
+    -- The thumb's center runs from 10 to 230; 20 of -40 to 120 is 3/8 of the way.
     equal(point[1], "CENTER")
     equal(point[3], "LEFT")
-    equal(point[4], 10 + 5 / 12 * 220)
+    equal(point[4], 10 + 3 / 8 * 220)
     frame:Release()
     equal(frame.released, true)
     equal(tick.shown, false, "hidden when the panel reuses the frame for another setting")
@@ -7442,7 +7453,10 @@ test("action bars: \"! Fear F\" fears your focus; its button shows the F and nev
     state.settings.GRIMOIRE_FOCUS_MACROS:SetValue(true)
     equal(named("! Fear F").body, "#showtooltip Fear\n/cast [@focus,harm,nodead] Fear")
     state.barsChanged()
-    equal(state.env.ActionButton1.grimoireFocusMark.shown, true, "an F on its button")
+    local mark = state.env.ActionButton1.grimoireFocusMark
+    equal(mark.shown, true, "an F on its button")
+    equal(mark.text.text, "F")
+    equal(mark.badge ~= nil and mark.rim ~= nil, true, "on a red badge with a dark rim")
     equal(state.env.ActionButton2.grimoireFocusMark, nil, "none on Fear itself")
     equal(glows(state), "")
     local unknown = stonesFixture({known = {[172] = true}, db = {hotbar = {focusMacros = true}}})

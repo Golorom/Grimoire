@@ -331,11 +331,14 @@ function WTF.PanelColor(key)
     return HexColor(WTF.db.tracker.panelColors[key])
 end
 
-WTF.PLATE_DOTS_OFFSET_MIN = 0
+-- 0.4.3: 20 by default, just above the default UI's debuff icons (in client
+-- on Forever 50 floated among the damage numbers), and below zero allowed.
+-- WTF's 50 cleared EllesmereUI's debuff icons.
+WTF.PLATE_DOTS_OFFSET_MIN = -40
 WTF.PLATE_DOTS_OFFSET_MAX = 120
--- Clears the name and EllesmereUI's debuff icons above it (author-tested in client:
--- 4 covered the name, 40 the icons, 50 cleared both).
-WTF.DEFAULT_PLATE_DOTS_OFFSET = 50
+WTF.DEFAULT_PLATE_DOTS_OFFSET = 20
+local OLD_PLATE_DOTS_OFFSET = 50
+local PLATE_DOTS_LOOK = 2
 
 function WTF.SanitizePlateDotsOffset(value)
     if not IsWholeNumber(value) then
@@ -523,7 +526,11 @@ function WTF.SanitizeDB(db)
         -- Bars by default (author-approved).
         theme = tracker.theme == "compact" and "compact" or "bars",
         plateDots = tracker.plateDots == true,
-        plateDotsOffset = WTF.SanitizePlateDotsOffset(tracker.plateDotsOffset),
+        -- WTF's untouched height moves to the new default once.
+        plateDotsOffset = WTF.SanitizePlateDotsOffset(tracker.plateDotsLook ~= PLATE_DOTS_LOOK
+            and tracker.plateDotsOffset == OLD_PLATE_DOTS_OFFSET and WTF.DEFAULT_PLATE_DOTS_OFFSET
+            or tracker.plateDotsOffset),
+        plateDotsLook = PLATE_DOTS_LOOK,
         plateDotsOpacity = WTF.SanitizeWhole(tracker.plateDotsOpacity, WTF.PLATE_DOTS_OPACITY_MIN,
             WTF.PLATE_DOTS_OPACITY_MAX, WTF.DEFAULT_PLATE_DOTS_OPACITY),
         outlineWidth = WTF.SanitizeWhole(tracker.outlineWidth, WTF.OUTLINE_WIDTH_MIN, WTF.OUTLINE_WIDTH_MAX,

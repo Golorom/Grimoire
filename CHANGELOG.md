@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.3 (2026-11-18)
+
+Changed
+- Focus macro buttons show a white F on a red badge.
+- DoT dots on nameplates sit lower by default, on a soft dark strip with no border. Their height can go below the nameplate's top edge.
+
 ## 0.4.2 (2026-11-18)
 
 Fixed

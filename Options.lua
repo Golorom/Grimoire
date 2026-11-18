@@ -464,7 +464,8 @@ local function AddTrackerPage(parent)
         end)
     local offsetInitializer = Settings.CreateSlider(page, offset,
         SliderOptions(WTF.PLATE_DOTS_OFFSET_MIN, WTF.PLATE_DOTS_OFFSET_MAX, 1),
-        "How far above the nameplate the dots sit, to clear other nameplate AddOns.")
+        "How far above the nameplate the dots sit. Lower it to bring them down to the nameplate, raise it to clear "
+            .. "debuff icons or another nameplate AddOn.")
     offsetInitializer:SetParentInitializer(dotsInitializer, function()
         return WTF.db.tracker.plateDots and WTF.HasTrackableDots()
     end)
