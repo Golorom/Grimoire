@@ -37,6 +37,8 @@ function DyresToolkit.CreatePlateDots(spec)
         return nil, "C_NamePlate.GetNamePlateForUnit"
     end
     local tracker, store = spec.tracker, spec.store
+    -- Grimoire: the owner may choose the dots' size, gap and padding.
+    local DOT_SIZE, DOT_GAP, PADDING = spec.dotSize or DOT_SIZE, spec.dotGap or DOT_GAP, spec.padding or PADDING
     local dots = {free = {}, byUnit = {}, all = {}, known = {}, inCombat = false, generation = 0}
     local events = CreateFrame("Frame")
     local Slots = spec.slots or function() return tracker:OrderedSlots() end
@@ -56,6 +58,10 @@ function DyresToolkit.CreatePlateDots(spec)
     end
 
     local function Circle(parent, layer, r, g, b)
+        -- Grimoire: the owner may draw the dots itself (spec.circle).
+        if type(spec.circle) == "function" then
+            return spec.circle(parent, layer, r, g, b)
+        end
         local texture = parent:CreateTexture(nil, layer)
         texture:SetSize(DOT_SIZE, DOT_SIZE)
         texture:SetColorTexture(r, g, b)
@@ -186,7 +192,12 @@ function DyresToolkit.CreatePlateDots(spec)
     function dots:ApplyColors()
         for _, bubble in ipairs(self.all) do
             for key, texture in pairs(bubble.colored) do
-                texture:SetColorTexture(Color(key))
+                -- Grimoire: and color them itself (spec.paint).
+                if type(spec.paint) == "function" then
+                    spec.paint(texture, Color(key))
+                else
+                    texture:SetColorTexture(Color(key))
+                end
             end
         end
     end

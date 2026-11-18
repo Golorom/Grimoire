@@ -5030,7 +5030,8 @@ test("a new color applies at once to bars and nameplate dots", function()
     for _, frame in ipairs(state.frames) do
         if frame.colored and frame.colored.corruption then bubble = frame end
     end
-    near3(bubble.colored.corruption.color, 0, 1, 0, "the nameplate dot")
+    near3(bubble.colored.corruption.vertex, 0, 1, 0, "the nameplate dot: its orb takes the color")
+    contains(bubble.colored.corruption.texture, "Textures\\DotOrb")
     dotsPage(state)
     near3(row.swatch.color.color, 0, 1, 0, "the swatch shows it")
     pickColor(state, row, 1, 0, 0, true)
@@ -5838,9 +5839,22 @@ test("each hostile plate gets a bubble with a dot per DoT you know", function()
     equal(point[3], "TOP")
     equal(point[5], 20, "0.4.3: just above the nameplate by default")
     equal(state.wtf.HasTrackableDots(), true)
-    -- A quiet bubble: a soft dark strip, no tooltip border.
-    equal(bubble.backdrop.edgeFile, nil)
-    equal(bubble.backdropColor[4], 0.35)
+    -- 0.4.4: in the game's style: no box, a gold-ringed socket per DoT, and
+    -- over it an orb in the DoT's color with the same ring while the DoT is up.
+    equal(bubble.backdrop, nil)
+    local empty = 0
+    for _, child in ipairs(bubble.children) do
+        if type(child.texture) == "string" and child.texture:find("DotEmpty", 1, true) then empty = empty + 1 end
+    end
+    equal(empty, 4, "a socket per DoT you know")
+    local orb = bubble.colored.corruption
+    contains(orb.texture, "DotOrb")
+    local ring
+    for _, child in ipairs(orb.parent.children) do
+        if type(child.texture) == "string" and child.texture:find("DotRing", 1, true) then ring = child end
+    end
+    equal(ring ~= nil, true, "the orb has its ring")
+    equal(bubble.colored.corruption.width, 14)
     -- WTF's untouched height moves to the new default once; a choice stays.
     equal(dotsFixture({db = {tracker = {plateDotsOffset = 50}}}).wtf.db.tracker.plateDotsOffset, 20)
     equal(dotsFixture({db = {tracker = {plateDotsOffset = 50, plateDotsLook = 2}}}).wtf.db.tracker.plateDotsOffset,

@@ -36,6 +36,7 @@ The code's namespace table is called `WTF` (the second value of `...` in each fi
 | `Cooldowns.lua` | cooldown-ready lines timed from your casts |
 | `Shield.lua` | shield display (from Dyre's Shields Up): the absorb and timed shields as arcs on one of four sides, or flat rows |
 | `scripts\build_shield_art.py` | draws the shield's arc textures (`Textures\ShieldRing*.tga`); not shipped |
+| `scripts\build_dot_art.py` | draws the nameplate dots' textures (`Textures\Dot*.tga`); not shipped |
 | `Probe.lua` | `/grim debug_restrictions`, `/grim debug_checks`, and the background diagnostics |
 | `Options.lua` | settings pages: the main page (frames, macros), the Cues grid (`WTF.CUES`: a row per thing watched, a saved switch per output), Warnings, Soul Shards, DoTs, Damage Prediction, DoT Order and Colors, Diagnostics |
 | `Bindings.xml` | the Smart curse key binding |

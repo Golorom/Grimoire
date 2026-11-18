@@ -8,6 +8,8 @@ local _, WTF = ...
 -- WTF's db.tracker settings.
 
 local dots = {available = false}
+local ART = "Interface\\AddOns\\Grimoire\\Textures\\"
+local DOT_SIZE, DOT_GAP = 14, 2
 
 -- At least one DoT you know, whatever the nameplate choices.
 function WTF.HasTrackableDots()
@@ -48,12 +50,30 @@ function WTF.InitializePlateDots()
     if not tracker then
         return
     end
-    -- 0.4.3: a quiet bubble, a soft dark strip with no tooltip border, so the
-    -- dots read and the frame around them does not stick out.
-    local engine = WTF.shared.CreatePlateDots({tracker = tracker, store = WTF.db.tracker, dress = function(bubble)
-        bubble:SetBackdrop({bgFile = "Interface\\Buttons\\WHITE8X8"})
-        bubble:SetBackdropColor(0, 0, 0, 0.35)
-    end})
+    -- 0.4.4: the dots in the game's own style, as class resource pips: each a
+    -- gold ring, a dark socket while the DoT is missing and an orb in the
+    -- DoT's color while it is up, with no box around them. The art is
+    -- Grimoire's own (scripts/build_dot_art.py).
+    local engine = WTF.shared.CreatePlateDots({tracker = tracker, store = WTF.db.tracker,
+        dotSize = DOT_SIZE, dotGap = DOT_GAP, padding = 1,
+        dress = function(bubble) bubble:SetBackdrop(nil) end,
+        circle = function(parent, layer, r, g, b)
+            local texture = parent:CreateTexture(nil, layer)
+            texture:SetSize(DOT_SIZE, DOT_SIZE)
+            -- The engine draws the missing DoT's dot on the bubble's BORDER
+            -- layer, and the colored one on the aura slot's button over it.
+            if layer == "BORDER" then
+                texture:SetTexture(ART .. "DotEmpty")
+                return texture
+            end
+            texture:SetTexture(ART .. "DotOrb")
+            texture:SetVertexColor(r, g, b)
+            local ring = parent:CreateTexture(nil, "OVERLAY")
+            ring:SetTexture(ART .. "DotRing")
+            ring:SetAllPoints(texture)
+            return texture
+        end,
+        paint = function(texture, r, g, b) texture:SetVertexColor(r, g, b) end})
     if not engine then
         return
     end

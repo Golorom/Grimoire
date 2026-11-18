@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.4.4 (2026-11-18)
+
+Changed
+- DoT dots on nameplates in the game's style. Each is a gold ring, with a dark socket while the DoT is missing and an orb in the DoT's color while it is up. No box around them.
+
 ## 0.4.3 (2026-11-18)
 
 Changed
