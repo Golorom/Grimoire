@@ -114,6 +114,8 @@ end
 WTF.CONTROL_HELP = {
     "\"! Fear\" makes the mob under your mouse (else your target) your focus and fears it. "
         .. "Shift-press it to fear another mob and keep your focus.",
+    "On a button whose key already holds Shift (bars on modifier keys), every press is the plain one: it "
+        .. "sets your focus and fears it. Cast Fear itself to fear another mob and keep your focus.",
     "The Focus box above the Control bar shows your focus's Fear. Click it to fear your focus again; "
         .. "with no focus it does nothing.",
     "Every other mob you fear gets its own row, and a Fear timer under its nameplate.",
@@ -1060,7 +1062,9 @@ local function AddMainPage(layout)
             .. "another mob and keep your focus. \"! Banish\" and \"! Seduction\" focus the hostile mob under your "
             .. "mouse (or your target, out of combat) and cast on your focus. \"! Seduction\" appears once your "
             .. "Succubus or Incubus has learned Seduction, and casts only while one is your pet. \"! Curse\" is "
-            .. "the smart curse (DoTs page).", function() WTF.ApplyControlMacros() end)
+            .. "the smart curse (DoTs page). On a button whose key already holds Shift, Ctrl or Alt, a macro "
+            .. "leaves out what it does with that key, so every press is the plain one.",
+        function() WTF.ApplyControlMacros() end)
     AddButton(layout, "How Fear and your focus work", "Show in chat", WTF.ReportControlHelp,
         "Print in your chat frame (only you see it) how \"! Fear\", the Focus box, and \"! Banish\" use your "
             .. "focus.")

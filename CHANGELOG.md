@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.4.2 (2026-11-18)
+
+Fixed
+- Red F on focus macro buttons, and glows on Grimoire's macros, now show on Forever.
+- `! Fear` on a key that holds Shift sets your focus.
+
+Changed
+- A Grimoire macro on a key that holds Shift, Ctrl or Alt leaves out what it does with that key. Every press is the plain one.
+
 ## 0.4.1 (2026-11-17)
 
 Changed

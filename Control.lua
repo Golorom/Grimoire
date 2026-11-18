@@ -242,6 +242,13 @@ function WTF.InitializeControl()
         return
     end
     control.tracker = tracker
+    -- 0.4.2: each macro's text fits the keys its buttons are on (Hotbar.lua):
+    -- on a key that holds Shift, the forms that read Shift go.
+    local engineBody = tracker.MacroBody
+    function tracker:MacroBody(def)
+        local body = engineBody(self, def)
+        return WTF.LayerMacro and WTF.LayerMacro(def.name, body) or body
+    end
     control.focusColor = color
     WTF.controlRows = tracker.rows
     WTF.controlFocusBox = tracker.focusBox

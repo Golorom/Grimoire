@@ -148,7 +148,8 @@ end
 
 function WTF.ApplyCurseMacro()
     if WTF.SmartCurseAvailable() then
-        WriteCurseMacro(tracker.engine:SmartCurseBody())
+        local body = tracker.engine:SmartCurseBody()
+        WriteCurseMacro(WTF.LayerMacro and WTF.LayerMacro(CURSE_MACRO, body) or body)
     end
 end
 

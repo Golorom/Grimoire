@@ -1129,11 +1129,26 @@ local function fixture(options)
         local action = state.actions[slot]
         if action then return action[1], action[2], action[3] end
     end
-    env.GetActionText = function(slot)
+    -- 12.0 moved the slot's text into C_ActionBar; the old global is there
+    -- only with options.oldActionText (the deprecation fallbacks).
+    local function actionText(slot)
         local action = state.actions[slot]
         return action and action[4]
     end
-    env.HasAction = function(slot) return state.actions[slot] ~= nil end
+    env.C_ActionBar = {GetActionText = actionText,
+        HasAction = function(slot) return state.actions[slot] ~= nil end}
+    if options.oldActionText then
+        env.C_ActionBar = nil
+        env.GetActionText = actionText
+        env.HasAction = function(slot) return state.actions[slot] ~= nil end
+    end
+    -- options.bindings[command] = a key, or a list of keys.
+    state.bindings = options.bindings or {}
+    env.GetBindingKey = function(command)
+        local keys = state.bindings[command]
+        if type(keys) == "table" then return unpack(keys) end
+        return keys
+    end
     env.GetMacroSpell = function(index) return state.macroSpells[index] end
     -- Something on the bars changed: the map follows shortly, out of combat.
     function state.barsChanged()
@@ -3430,13 +3445,14 @@ test("the main page explains how Fear, Banish, and your focus work", function()
     equal(button.buttonText, "Show in chat")
     state.clear()
     button.buttonClick()
-    equal(#state.messages, 5, "one chat line each")
+    equal(#state.messages, 6, "one chat line each")
     equal(state.messages[1], "Grimoire: \"! Fear\" makes the mob under your mouse (else your target) your focus and "
         .. "fears it. Shift-press it to fear another mob and keep your focus.")
-    contains(state.messages[2], "Click it to fear your focus again; with no focus it does nothing.")
-    contains(state.messages[3], "Every other mob you fear gets its own row")
-    contains(state.messages[4], "\"! Banish\" works the same way")
-    contains(state.messages[5], "Where the game has no focus (Classic Era), the macros fear or banish the mob "
+    contains(state.messages[2], "On a button whose key already holds Shift")
+    contains(state.messages[3], "Click it to fear your focus again; with no focus it does nothing.")
+    contains(state.messages[4], "Every other mob you fear gets its own row")
+    contains(state.messages[5], "\"! Banish\" works the same way")
+    contains(state.messages[6], "Where the game has no focus (Classic Era), the macros fear or banish the mob "
         .. "under your mouse, else your target")
     local macros = initializerFor(state.categories["Grimoire"], "GRIMOIRE_CONTROL_MACROS")
     contains(macros.tooltip, "\"! Fear\" makes the mob under your mouse (else your target) your focus and fears it")
@@ -7435,6 +7451,66 @@ test("action bars: \"! Fear F\" fears your focus; its button shows the F and nev
     end
     state.settings.GRIMOIRE_FOCUS_MACROS:SetValue(false)
     equal(named("! Fear F"), nil, "off deletes it")
+end)
+test("action bars: a macro's name reads through C_ActionBar, and through the old global where that is all there is", function()
+    local actions = {[1] = {"macro", 172, "spell", "! Corruption F"}, [2] = {"macro", 1, nil, "! Prep"}}
+    local state = stonesFixture({known = {[172] = true}, actions = actions})
+    state.barsChanged()
+    equal(state.env.GetActionText, nil, "as on Forever: no global")
+    equal(state.env.ActionButton1.grimoireFocusMark.shown, true, "the F shows")
+    state.clear()
+    state.slash("debug_hotbar")
+    contains(state.messages[2], "macros=2 focusMarks=1 nameRead=C_ActionBar")
+    local older = stonesFixture({known = {[172] = true}, actions = actions, oldActionText = true})
+    older.barsChanged()
+    equal(older.env.ActionButton1.grimoireFocusMark.shown, true)
+    older.clear()
+    older.slash("debug_hotbar")
+    contains(older.messages[2], "nameRead=global")
+end)
+test("control macros on a key that holds a modifier leave out what they do with it", function()
+    local PLAIN_FEAR = "#showtooltip Fear\n/focus [@mouseover,harm,nodead][harm,nodead]\n/use [@focus,harm,nodead] Fear"
+    local SHIFT_FEAR = "#showtooltip Fear\n/focus [nomod:shift,@mouseover,harm,nodead][nomod:shift,harm,nodead]"
+        .. "\n/use [mod:shift,@mouseover,harm,nodead][mod:shift,harm,nodead][@focus,harm,nodead] Fear"
+    local state = controlFixture({
+        actions = {[1] = {"macro", 5782, "spell", "! Fear"}, [2] = {"macro", 710, "spell", "! Banish"}},
+        bindings = {ACTIONBUTTON1 = "SHIFT-1", ACTIONBUTTON2 = "2"}})
+    equal(macroBody(state, "! Fear"), PLAIN_FEAR,
+        "Shift is down on every press of this key: the press sets the focus and fears it")
+    equal(state.wtf.db.hotbar.layers["! Fear"], "shift")
+    contains(macroBody(state, "! Banish"), "/clearfocus [mod:shift][btn:2]", "a plain key keeps its Shift form")
+    -- Banish moved to an Alt+Shift key: only the right-click clears the focus.
+    state.bindings.ACTIONBUTTON2 = {"ALT-SHIFT-2", "ALT-CTRL-F3"}
+    state.emit("UPDATE_BINDINGS")
+    state.now = state.now + 1
+    state.runTimers()
+    equal(macroBody(state, "! Banish"), "#showtooltip Banish\n/clearfocus [btn:2]"
+        .. "\n/focus [@mouseover,harm,nodead][@focus,noharm][@focus,dead]\n/use [@focus,harm,nodead] Banish")
+    equal(state.wtf.db.hotbar.layers["! Banish"], "shift ctrl alt")
+    -- Fear back on a plain key: its Shift form returns.
+    state.bindings.ACTIONBUTTON1 = "1"
+    state.emit("UPDATE_BINDINGS")
+    state.now = state.now + 1
+    state.runTimers()
+    equal(macroBody(state, "! Fear"), SHIFT_FEAR)
+    equal(state.wtf.db.hotbar.layers["! Fear"], nil)
+    -- In combat nothing is rewritten; it follows when the fight ends.
+    state.combat = true
+    state.bindings.ACTIONBUTTON1 = "SHIFT-1"
+    state.emit("UPDATE_BINDINGS")
+    state.now = state.now + 1
+    state.runTimers()
+    equal(macroBody(state, "! Fear"), SHIFT_FEAR)
+    state.combat = false
+    state.emit("PLAYER_REGEN_ENABLED")
+    equal(macroBody(state, "! Fear"), PLAIN_FEAR)
+    -- The next login writes it right at once, from what was read last.
+    local again = controlFixture({db = {hotbar = {layers = {["! Fear"] = "shift"}}}})
+    equal(macroBody(again, "! Fear"), PLAIN_FEAR)
+    -- A branch of its own goes whole, as in "! Curse".
+    equal(again.wtf.LayerMacro("! Fear", "/use [mod:shift] Curse of Tongues; [mod:ctrl] Curse of the Elements; "
+        .. "Curse of Weakness"), "/use [mod:ctrl] Curse of the Elements; Curse of Weakness")
+    equal(again.wtf.LayerMacro("! Banish", "/use [mod:shift] A; B"), "/use [mod:shift] A; B", "another macro's keys")
 end)
 test("recast cue: the tracker's mark off keeps the glow on your action bars", function()
     local state = recastFixture({actions = {[1] = {"spell", 6222}}})

@@ -54,6 +54,7 @@ All of these exist on client 1.60.1 (probed 2026-11-17, `api.*` facts in `/grim 
 - `DeleteCursorItem` needs a hardware event (a key press or click) and deletes one item per event.
 - A status bar handed to the aura engine becomes forbidden to addon code.
 - `C_Item.DeleteItem` (Forever) is for Blizzard's code only.
+- Action bar reads moved into `C_ActionBar` in 12.0.0 (`GetActionText`, `HasAction` and others); the old globals exist only with the deprecation fallbacks. `Hotbar.lua` reads `C_ActionBar.GetActionText` first. In game on 0.4.1, which read the global only, focus macro buttons had no F mark; the missing global is the likely cause, not yet confirmed. `/grim debug_hotbar` prints which one was found (`nameRead=`). `GetActionInfo` is still a global.
 
 ## Sources
 

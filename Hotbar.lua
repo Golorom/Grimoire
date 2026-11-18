@@ -17,9 +17,18 @@ local _, WTF = ...
 -- spells change. The glows are plain frames that show and hide at once,
 -- also in combat.
 
-local BUTTON_NAMES = {"ActionButton%d", "MultiBarBottomLeftButton%d", "MultiBarBottomRightButton%d",
-    "MultiBarRightButton%d", "MultiBarLeftButton%d", "MultiBar5Button%d", "MultiBar6Button%d",
-    "MultiBar7Button%d"}
+-- Each bar's buttons, and the key binding command of a button.
+local BARS = {
+    {"ActionButton%d", "ACTIONBUTTON%d"},
+    {"MultiBarBottomLeftButton%d", "MULTIACTIONBAR1BUTTON%d"},
+    {"MultiBarBottomRightButton%d", "MULTIACTIONBAR2BUTTON%d"},
+    {"MultiBarRightButton%d", "MULTIACTIONBAR3BUTTON%d"},
+    {"MultiBarLeftButton%d", "MULTIACTIONBAR4BUTTON%d"},
+    {"MultiBar5Button%d", "MULTIACTIONBAR5BUTTON%d"},
+    {"MultiBar6Button%d", "MULTIACTIONBAR6BUTTON%d"},
+    {"MultiBar7Button%d", "MULTIACTIONBAR7BUTTON%d"},
+}
+local MODIFIERS = {"shift", "ctrl", "alt"}
 local BUTTONS_PER_BAR = 12
 local MAP_DELAY = 0.2
 local SHADOW_BOLT = 686
@@ -30,7 +39,8 @@ local SWITCH = {healthstone = "healthstone", soulstone = "soulstone", armor = "a
     dot = "recast", focus = "recast"}
 local MAP_JOB = {}
 
-local hotbar = {keysOf = {}, wants = {}, glowing = {}, proxies = {}}
+-- layers: macro name -> the modifiers its buttons' keys hold (0.4.2).
+local hotbar = {keysOf = {}, wants = {}, glowing = {}, proxies = {}, layers = {}, commandOf = {}}
 
 function WTF.SanitizeHotbar(saved)
     saved = type(saved) == "table" and saved or {}
@@ -48,20 +58,105 @@ function WTF.SanitizeHotbar(saved)
     end
     clean.focusMacros = saved.focusMacros == true
     clean.prepMacro = saved.prepMacro == true
+    -- 0.4.2: the modifiers held by the keys of each macro's buttons, as last
+    -- read ("! Fear" = "shift"), so a login writes the macros right at once.
+    clean.layers = {}
+    if type(saved.layers) == "table" then
+        for name, held in pairs(saved.layers) do
+            if type(name) == "string" and type(held) == "string" then
+                clean.layers[name] = held
+            end
+        end
+    end
     return clean
 end
 
 local function Buttons()
     local list = {}
-    for _, pattern in ipairs(BUTTON_NAMES) do
+    for _, bar in ipairs(BARS) do
         for index = 1, BUTTONS_PER_BAR do
-            local button = _G[pattern:format(index)]
+            local button = _G[bar[1]:format(index)]
             if type(button) == "table" then
                 list[#list + 1] = button
+                hotbar.commandOf[button] = bar[2]:format(index)
             end
         end
     end
     return list
+end
+
+-- A macro's name on a slot. 12.0 moved the game's GetActionText into
+-- C_ActionBar; the old global is only there with the deprecation fallbacks.
+local function ActionText(slot)
+    local read = type(C_ActionBar) == "table" and C_ActionBar.GetActionText or GetActionText
+    if type(read) ~= "function" then
+        return nil
+    end
+    local ok, text = pcall(read, slot)
+    if ok and type(text) == "string" and not WTF.IsSecret(text) and text ~= "" then
+        return text
+    end
+    return nil
+end
+
+local function HasActionIn(slot)
+    local read = type(C_ActionBar) == "table" and C_ActionBar.HasAction or HasAction
+    if type(read) ~= "function" then
+        return true
+    end
+    local ok, has = pcall(read, slot)
+    return not ok or has == true
+end
+
+-- The modifiers held while a button's key is down: Shift for "SHIFT-3".
+local function HeldBy(button, held)
+    local command = hotbar.commandOf[button]
+    if not command or type(GetBindingKey) ~= "function" then
+        return
+    end
+    for _, key in ipairs({GetBindingKey(command)}) do
+        if type(key) == "string" then
+            key = key:upper()
+            for _, modifier in ipairs(MODIFIERS) do
+                if key:find(modifier:upper() .. "-", 1, true) then
+                    held[modifier] = true
+                end
+            end
+        end
+    end
+end
+
+local function LayerText(held)
+    local parts = {}
+    for _, modifier in ipairs(MODIFIERS) do
+        if held[modifier] then
+            parts[#parts + 1] = modifier
+        end
+    end
+    return table.concat(parts, " ")
+end
+
+-- A macro's text for the keys its buttons are on (0.4.2). Grimoire's macros
+-- read Shift, Ctrl and Alt for a second action. On a button whose key
+-- already holds one of them (bars on modifier layers), that modifier is
+-- always down, so every press took the second action: "! Fear" on a Shift
+-- key feared the mob under the mouse and never set the focus. Here each
+-- form that reads a held modifier goes, and the plain press is left:
+--   "[mod:shift] Spell; "   a branch of its own
+--   "[mod:shift,...]"       a clause that needs it ("[mod:shift]" too)
+--   "nomod:shift,"          a clause that needs it up
+function WTF.LayerMacro(name, body)
+    local held = WTF.db and WTF.db.hotbar and WTF.db.hotbar.layers[name]
+    if type(body) ~= "string" or type(held) ~= "string" or held == "" then
+        return body
+    end
+    for modifier in held:gmatch("%a+") do
+        body = body:gsub("%[mod:" .. modifier .. "%][^;%[\n]*;%s*", "")
+        body = body:gsub("%[mod:" .. modifier .. "[^%]]*%]", "")
+        body = body:gsub("nomod:" .. modifier .. ",", "")
+        body = body:gsub("%[nomod:" .. modifier .. "%]", "")
+    end
+    return body
 end
 
 local function SlotOf(button)
@@ -116,16 +211,23 @@ local function KeysOf(slot)
             keys[stone] = true
         end
     elseif kind == "macro" then
-        local name = type(GetActionText) == "function" and GetActionText(slot) or nil
+        local name = ActionText(slot)
+        -- Where the slot's text does not read, a macro with no spell or item
+        -- of its own gives its index.
+        if not name and subType ~= "spell" and subType ~= "item" and type(id) == "number"
+                and type(GetMacroInfo) == "function" then
+            local ok, text = pcall(GetMacroInfo, id)
+            name = ok and type(text) == "string" and text or nil
+        end
         if name == WTF.PREP_MACRO then
             keys.prep = true
-            return keys
+            return keys, name
         end
         local focus = name and WTF.FocusMacroFamily and WTF.FocusMacroFamily(name)
         if focus then
             -- A focus macro glows for the focus only.
             keys["focus:" .. focus] = true
-            return keys
+            return keys, name
         end
         local stone = name and WTF.StoneOfAction and WTF.StoneOfAction("macro", name)
         if stone then
@@ -138,6 +240,7 @@ local function KeysOf(slot)
             spellID = GetMacroSpell(id)
         end
         SpellKeys(spellID, keys)
+        return keys, name
     end
     return keys
 end
@@ -228,11 +331,16 @@ end
 -- Out of combat: which button holds what. Glows are made here, so a glow
 -- that turns on in combat already has its frame.
 local function Map()
-    local keysOf, bolts = {}, {}
+    local keysOf, bolts, held, macros = {}, {}, {}, 0
     for _, button in ipairs(Buttons()) do
         local slot = SlotOf(button)
-        if slot and (type(HasAction) ~= "function" or HasAction(slot)) then
-            local keys = KeysOf(slot)
+        if slot and HasActionIn(slot) then
+            local keys, macro = KeysOf(slot)
+            if macro then
+                macros = macros + 1
+                held[macro] = held[macro] or {}
+                HeldBy(button, held[macro])
+            end
             if next(keys) then
                 keysOf[button] = keys
                 if not button.grimoireGlow then
@@ -255,6 +363,21 @@ local function Map()
     end
     hotbar.keysOf = keysOf
     hotbar.bolts = bolts
+    hotbar.macros = macros
+    -- The keys of each macro's buttons: a change rewrites Grimoire's macros
+    -- that read a modifier (LayerMacro). A macro on no button keeps what was
+    -- read last (bars that are not filled yet at login change nothing).
+    local layers, changed = WTF.db.hotbar.layers, false
+    for name, mods in pairs(held) do
+        local text = LayerText(mods)
+        text = text ~= "" and text or nil
+        if layers[name] ~= text then
+            layers[name], changed = text, true
+        end
+    end
+    if changed and WTF.ApplyControlMacros then
+        WTF.ApplyControlMacros()
+    end
     PlaceNightfall(bolts)
     Apply()
 end
@@ -322,6 +445,21 @@ function WTF.ReportHotbarDebug()
     table.sort(wants)
     WTF.Report(string.format("debug_hotbar mapped=%d shadowBolt=%d wants=%s glowing=%s", mapped,
         #(hotbar.bolts or {}), table.concat(wants, ","), table.concat(WTF.HotbarGlows(), ",")))
+    -- Macros found by name on the bars, the red F marks, and the modifiers
+    -- the keys of a macro's buttons hold.
+    local marks, layers = 0, {}
+    for _, button in ipairs(Buttons()) do
+        if button.grimoireFocusMark and button.grimoireFocusMark:IsShown() then
+            marks = marks + 1
+        end
+    end
+    for name, held in pairs(WTF.db.hotbar.layers) do
+        layers[#layers + 1] = name .. "=" .. held
+    end
+    table.sort(layers)
+    WTF.Report(string.format("debug_hotbar macros=%d focusMarks=%d nameRead=%s keys: %s", hotbar.macros or 0, marks,
+        type(C_ActionBar) == "table" and type(C_ActionBar.GetActionText) == "function" and "C_ActionBar"
+            or type(GetActionText) == "function" and "global" or "none", table.concat(layers, ", ")))
 end
 
 -- Focus macros (0.3.6, a choice, off by default): "! Corruption F" and the
@@ -485,7 +623,7 @@ function WTF.InitializeHotbar()
     CreateNightfallGlows()
     local events = CreateFrame("Frame")
     for _, event in ipairs({"PLAYER_ENTERING_WORLD", "ACTIONBAR_SLOT_CHANGED", "ACTIONBAR_PAGE_CHANGED",
-            "UPDATE_BONUS_ACTIONBAR", "UPDATE_MACROS", "SPELLS_CHANGED"}) do
+            "UPDATE_BONUS_ACTIONBAR", "UPDATE_MACROS", "SPELLS_CHANGED", "UPDATE_BINDINGS"}) do
         events:RegisterEvent(event)
     end
     events:SetScript("OnEvent", function(_, event)
